@@ -1,6 +1,6 @@
 import { Telegraf, Markup } from "telegraf";
 import dotenv from "dotenv";
-import { zodiacList } from "./zodiac.js";
+import { zodiacList } from "./zodiac";
 
 dotenv.config();
 const bot = new Telegraf(process.env.BOT_TOKEN!);
