@@ -1,9 +1,9 @@
 {
   "name": "astro-bot",
   "version": "1.0.0",
-  "type": "module",
+  "type": "commonjs",
   "scripts": {
-    "dev": "ts-node-dev src/bot.ts",
+    "dev": "ts-node-dev --respawn src/bot.ts",
     "build": "tsc",
     "start": "node dist/bot.js"
   },
