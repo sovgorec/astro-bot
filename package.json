@@ -1,19 +1,23 @@
 {
   "name": "astro-bot",
   "version": "1.0.0",
-  "type": "module",
+  "type": "commonjs",
   "scripts": {
     "dev": "ts-node-dev src/bot.ts",
     "build": "tsc",
     "start": "node dist/bot.js"
   },
   "dependencies": {
-    "telegraf": "^4.15.0",
-    "dotenv": "^16.4.5"
+    "dotenv": "^16.6.1",
+    "googleapis": "^164.1.0",
+    "node-cron": "^4.2.1",
+    "node-fetch": "^2.7.0",
+    "telegraf": "^4.16.3"
   },
   "devDependencies": {
-    "typescript": "^5.4.0",
+    "@types/node": "^20.10.5",
+    "@types/node-fetch": "^2.6.13",
     "ts-node-dev": "^2.0.0",
-    "@types/node": "^20.10.5"
+    "typescript": "^5.4.0"
   }
 }
