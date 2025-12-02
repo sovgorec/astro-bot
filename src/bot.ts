@@ -1,4 +1,4 @@
-import { Telegraf, Markup } from "telegraf";
+import { Telegraf, Markup, session } from "telegraf";
 import dotenv from "dotenv";
 import cron from "node-cron";
 import fs from "fs";
@@ -120,6 +120,9 @@ function ensureUserDefaults(u: any) {
 ========================= */
 
 const bot = new Telegraf(process.env.BOT_TOKEN!);
+bot.use(session());
+
+
 
 const mainMenu = Markup.keyboard([
   ["🌞 Прогноз на сегодня", "🪐 Прогноз на неделю"],
