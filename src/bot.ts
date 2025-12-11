@@ -609,7 +609,7 @@ function showSettings(ctx: any) {
       [Markup.button.callback("⏰ Ежедневное время", "settings_daily")],
       [Markup.button.callback("🪐 Еженедельное время", "settings_weekly")],
       [Markup.button.callback("📅 Изменить дату рождения", "settings_birthdate")],
-      [Markup.button.url("💳 Тарифы и оплата", "https://docs.google.com/document/d/1Q53-21nSGnMPqVktqlfyrXHEHr9teB2Q1jyk-SGiQAw/edit?usp=sharing")]
+      [{ text: "💳 Тарифы и оплата", url: "https://docs.google.com/document/d/1Q53-21nSGnMPqVktqlfyrXHEHr9teB2Q1jyk-SGiQAw/edit?usp=sharing" }]
     ])
   );
 }
