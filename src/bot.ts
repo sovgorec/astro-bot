@@ -598,19 +598,21 @@ function showSettings(ctx: any) {
   const tzText = u.timezone || "не выбран";
   const bday = u.birthDate || "не указана";
 
+  const keyboard = [
+    [Markup.button.callback("🌍 Часовой пояс", "settings_tz")],
+    [Markup.button.callback("⏰ Ежедневное время", "settings_daily")],
+    [Markup.button.callback("🪐 Еженедельное время", "settings_weekly")],
+    [Markup.button.callback("📅 Изменить дату рождения", "settings_birthdate")],
+    [{ text: "💳 Тарифы и оплата", url: "https://docs.google.com/document/d/1Q53-21nSGnMPqVktqlfyrXHEHr9teB2Q1jyk-SGiQAw/edit?usp=sharing" }]
+  ];
+
   ctx.replyWithHTML(
     `⚙️ <b>Текущие настройки</b>\n\n` +
     `🌍 Часовой пояс: <b>${escapeHTML(tzText)}</b>\n` +
     `🌞 Daily: <b>${u.dailyHour}:00</b>\n` +
     `🪐 Weekly: <b>${u.weeklyDow}</b> день, <b>${u.weeklyHour}:00</b>\n` +
     `📅 Дата рождения: <b>${escapeHTML(bday)}</b>`,
-    Markup.inlineKeyboard([
-      [Markup.button.callback("🌍 Часовой пояс", "settings_tz")],
-      [Markup.button.callback("⏰ Ежедневное время", "settings_daily")],
-      [Markup.button.callback("🪐 Еженедельное время", "settings_weekly")],
-      [Markup.button.callback("📅 Изменить дату рождения", "settings_birthdate")],
-      [{ text: "💳 Тарифы и оплата", url: "https://docs.google.com/document/d/1Q53-21nSGnMPqVktqlfyrXHEHr9teB2Q1jyk-SGiQAw/edit?usp=sharing" }]
-    ])
+    Markup.inlineKeyboard(keyboard)
   );
 }
 
