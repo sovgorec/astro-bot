@@ -143,7 +143,8 @@ bot.telegram.setMyCommands([
   { command: "settings", description: "Настройки ⏰" },
   { command: "task", description: "Задание дня 🎯" },
   { command: "tests", description: "Психологические тесты 📋" },
-  { command: "matrix", description: "Матрица судьбы 🔮" }
+  { command: "matrix", description: "Матрица судьбы 🔮" },
+  { command: "tariffs", description: "Тарифы и оплата 💳" }
 ]);
 
 /* =========================
@@ -314,6 +315,14 @@ bot.command("settings", (ctx) => showSettings(ctx));
 bot.command("task", (ctx) => sendDailyTask(ctx));
 bot.command("tests", (ctx) => showTestsMenu(ctx));
 bot.command("matrix", (ctx) => openMatrix(ctx)); // 🔮 Матрица судьбы
+bot.command("tariffs", (ctx) => {
+  ctx.replyWithHTML(
+    `💳 <b>Тарифы и оплата</b>\n\n` +
+    `Информация о тарифах и способах оплаты:\n\n` +
+    `<a href="https://docs.google.com/document/d/1Q53-21nSGnMPqVktqlfyrXHEHr9teB2Q1jyk-SGiQAw/edit?usp=sharing">Открыть документ с тарифами</a>`,
+    mainMenu
+  );
+});
 
 // Кнопки основного меню
 bot.hears("🌞 Прогноз на сегодня", (ctx) => sendDaily(ctx));
