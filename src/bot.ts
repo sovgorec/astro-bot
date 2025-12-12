@@ -139,8 +139,6 @@ bot.telegram.setMyCommands([
   { command: "compatibility", description: "Совместимость ❤️" },
   { command: "moon", description: "Лунный день 🌕" },
   { command: "change_sign", description: "Сменить знак ♻️" },
-  { command: "timezone", description: "Часовой пояс 🌍" },
-  { command: "settings", description: "Настройки ⏰" },
   { command: "task", description: "Задание дня 🎯" },
   { command: "tests", description: "Психологические тесты 📋" },
   { command: "matrix", description: "Матрица судьбы 🔮" },
