@@ -3,8 +3,14 @@ import dotenv from "dotenv";
 import cron from "node-cron";
 import fs from "fs";
 import { zodiacList, zodiacMap } from "./zodiac";
+import db from "./db/init";
+import { getUserByTelegramId, createUserIfNotExists, updateUser, getAllUsers, User } from "./db/userRepository";
+import { migrateUsersFromJson } from "./db/migrate";
 
 dotenv.config();
+
+// Инициализация БД и миграция данных
+migrateUsersFromJson();
 
 /* =========================
    Общие утилиты
@@ -74,45 +80,25 @@ const MATRIX_SECTION_MAP: Record<string, string> = {
 // }
 let matrixData: any = readJSON("matrix_texts.json");
 
-// users: {
-//   [tgId]: {
-//     sign,
-//     dailyIndex,
-//     weeklyIndex,
-//     timezone,
-//     dailyHour,
-//     weeklyHour,
-//     weeklyDow,
-//     lastLunarDay,
-//     lastDailyDate,
-//     lastDailyText,
-//     lastWeeklyDate,
-//     lastWeeklyText,
-//     dailyTaskIndex,
-//     currentTestId,
-//     currentQuestionIndex,
-//     currentTestScore,
-//     birthDate,        // "ДД.ММ.ГГГГ"
-//     arcans,           // { main, relations, money, purpose, weak }
-//     awaitingBirthDate // ждём ли ввода даты рождения
-//   }
-// }
-let users: Record<number, any> = readJSON("users.json") || {};
-
-function saveUsers() {
-  writeJSON("users.json", users);
-}
-
-function ensureUserDefaults(u: any) {
-  if (u.dailyTaskIndex == null) u.dailyTaskIndex = 0;
-  if (u.currentTestId === undefined) u.currentTestId = null;
-  if (u.currentQuestionIndex == null) u.currentQuestionIndex = 0;
-  if (u.currentTestScore == null) u.currentTestScore = 0;
+function ensureUserDefaults(u: User): User {
+  const updates: Partial<User> = {};
+  
+  if (u.dailyTaskIndex == null) updates.dailyTaskIndex = 0;
+  if (u.currentTestId === undefined) updates.currentTestId = null;
+  if (u.currentQuestionIndex == null) updates.currentQuestionIndex = 0;
+  if (u.currentTestScore == null) updates.currentTestScore = 0;
 
   // Матрица судьбы
-  if (u.birthDate === undefined) u.birthDate = null;
-  if (u.arcans === undefined) u.arcans = null;
-  if (u.awaitingBirthDate === undefined) u.awaitingBirthDate = false;
+  if (u.birthDate === undefined) updates.birthDate = null;
+  if (u.arcans === undefined) updates.arcans = null;
+  if (u.awaitingBirthDate === undefined) updates.awaitingBirthDate = false;
+
+  if (Object.keys(updates).length > 0) {
+    updateUser(u.telegramId, updates);
+    Object.assign(u, updates);
+  }
+
+  return u;
 }
 
 /* =========================
@@ -170,7 +156,8 @@ bot.action(/zodiac_(.+)/, async (ctx) => {
     const signEn = zodiacMap[signRu];
     if (!signEn) return ctx.answerCbQuery("Не смог распознать знак", { show_alert: true });
 
-    users[ctx.from!.id] = {
+    const telegramId = ctx.from!.id;
+    createUserIfNotExists(telegramId, {
       sign: signRu,
       dailyIndex: 0,
       weeklyIndex: 0,
@@ -183,23 +170,17 @@ bot.action(/zodiac_(.+)/, async (ctx) => {
       lastDailyText: null,
       lastWeeklyDate: null,
       lastWeeklyText: null,
-
-      // Задания дня
       dailyTaskIndex: 0,
-
-      // Тесты
       currentTestId: null,
       currentQuestionIndex: 0,
       currentTestScore: 0,
-
-      // Матрица судьбы
       birthDate: null,
       arcans: null,
       awaitingBirthDate: false
-    };
-    saveUsers();
+    });
 
-    const text = getDailyText(signEn, users[ctx.from!.id]);
+    const user = getUserByTelegramId(telegramId)!;
+    const text = getDailyText(signEn, user);
     await ctx.answerCbQuery();
     await ctx.replyWithHTML(
       `<b>${getEmojiBySign(signRu)} Твой знак — ${escapeHTML(signRu)}</b>\n\n` +
@@ -288,10 +269,10 @@ bot.action("tz_back", (ctx) => {
 bot.action(/tz_select_(.+)/, async (ctx) => {
   const tz = ctx.match[1];
   const uid = ctx.from!.id;
-  if (!users[uid]) return ctx.reply("Сначала выбери знак через /start 🔮");
-  users[uid].timezone = tz;
-  ensureUserDefaults(users[uid]);
-  saveUsers();
+  let user = getUserByTelegramId(uid);
+  if (!user) return ctx.reply("Сначала выбери знак через /start 🔮");
+  updateUser(uid, { timezone: tz });
+  user = ensureUserDefaults(getUserByTelegramId(uid)!);
 
   const local = new Date(new Date().toLocaleString("en-US", { timeZone: tz }));
   const timeNow = local.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
@@ -345,8 +326,7 @@ function openMatrix(ctx: any) {
 
   // Если дата рождения ещё не указана — просим ввести
   if (!u.birthDate || !u.arcans) {
-    u.awaitingBirthDate = true;
-    saveUsers();
+    updateUser(u.telegramId, { awaitingBirthDate: true });
 
     ctx.replyWithHTML(
       "🔮 <b>Матрица судьбы</b>\n\n" +
@@ -405,14 +385,14 @@ bot.action("matrix_reco", async (ctx) => {
 });
 
 bot.action("matrix_back", (ctx) => {
-  const u = users[ctx.from!.id];
+  const u = getUserByTelegramId(ctx.from!.id);
   if (!u) {
     ctx.answerCbQuery();
     return ctx.reply("Сначала выбери знак через /start 🔮");
   }
   ensureUserDefaults(u);
   ctx.answerCbQuery();
-  showMatrixSections(ctx, u);
+  showMatrixSections(ctx, getUserByTelegramId(ctx.from!.id)!);
 });
 
 async function sendMatrixSection(ctx: any, section: string) {
@@ -421,8 +401,7 @@ async function sendMatrixSection(ctx: any, section: string) {
   ensureUserDefaults(u);
 
   if (!u.birthDate || !u.arcans) {
-    u.awaitingBirthDate = true;
-    saveUsers();
+    updateUser(u.telegramId, { awaitingBirthDate: true });
     await ctx.replyWithHTML(
       "Чтобы показать этот раздел, мне нужна твоя дата рождения.\n" +
       "Введи её в формате <b>ДД.ММ.ГГГГ</b>."
@@ -431,6 +410,9 @@ async function sendMatrixSection(ctx: any, section: string) {
   }
 
   // Получаем номер аркана
+  if (!u.arcans) {
+    return ctx.reply("Матрица не рассчитана.");
+  }
   let arcanNum: number | null = null;
   if (section === "general") arcanNum = u.arcans.main;
   if (section === "relations") arcanNum = u.arcans.relations;
@@ -474,7 +456,7 @@ async function sendMatrixSection(ctx: any, section: string) {
 
 async function sendDaily(ctx: any) {
   const u = getUserOrAsk(ctx);
-  if (!u) return;
+  if (!u || !u.sign) return;
 
   const signEn = zodiacMap[u.sign];
   const text = getDailyText(signEn, u);
@@ -487,7 +469,7 @@ async function sendDaily(ctx: any) {
 
 async function sendWeekly(ctx: any) {
   const u = getUserOrAsk(ctx);
-  if (!u) return;
+  if (!u || !u.sign) return;
 
   const signEn = zodiacMap[u.sign];
   const text = getWeeklyText(signEn, u);
@@ -518,7 +500,7 @@ function askCompatibility(ctx: any) {
 
 bot.action(/compat_(.+)/, async (ctx) => {
   const partnerRu = ctx.match[1].replace(/_/g, " ");
-  const u = users[ctx.from!.id];
+  const u = getUserByTelegramId(ctx.from!.id);
 
   if (!u?.sign) return sendZodiacSelection(ctx);
 
@@ -563,7 +545,8 @@ async function sendMoon(ctx: any) {
     desc.symbol = desc.symbol || "—";
     desc.advice = desc.advice || "Доверься интуиции.";
 
-    const tz = users[ctx.from!.id]?.timezone || "Europe/Moscow";
+    const user = getUserByTelegramId(ctx.from!.id);
+    const tz = user?.timezone || "Europe/Moscow";
     const lunarLengthMs = 24.83 * 60 * 60 * 1000;
     const base = new Date(Date.UTC(2000, 0, 6, 18, 14));
 
@@ -600,7 +583,7 @@ async function sendMoon(ctx: any) {
 ========================= */
 
 function showSettings(ctx: any) {
-  const u = users[ctx.from!.id];
+  const u = getUserByTelegramId(ctx.from!.id);
   if (!u?.sign) return sendZodiacSelection(ctx);
   ensureUserDefaults(u);
 
@@ -644,12 +627,11 @@ bot.action("settings_daily", (ctx) => {
 
 bot.action(/daily_(\d+)/, (ctx) => {
   const hour = Number(ctx.match[1]);
-  const u = users[ctx.from!.id];
+  const u = getUserByTelegramId(ctx.from!.id);
   if (!u?.sign) return sendZodiacSelection(ctx);
   ensureUserDefaults(u);
 
-  u.dailyHour = hour;
-  saveUsers();
+  updateUser(ctx.from!.id, { dailyHour: hour });
 
   ctx.answerCbQuery();
   ctx.replyWithHTML(`✅ Установлено: <b>${hour}:00</b>`, mainMenu);
@@ -669,14 +651,13 @@ bot.action("settings_weekly", (ctx) => {
 
 bot.action("settings_birthdate", async (ctx) => {
   const uid = ctx.from!.id;
-  const u = users[uid];
+  const u = getUserByTelegramId(uid);
 
   if (!u) return ctx.reply("Сначала выбери знак 🌟", mainMenu);
 
   ensureUserDefaults(u);
 
-  u.awaitingBirthDate = true;
-  saveUsers();
+  updateUser(uid, { awaitingBirthDate: true });
 
   await ctx.answerCbQuery();
   await ctx.replyWithHTML(
@@ -691,14 +672,12 @@ bot.action(/weekly_(\d+)_(\d+)/, (ctx) => {
   const dow = Number(ctx.match[1]);
   const hour = Number(ctx.match[2]);
 
-  const u = users[ctx.from!.id];
+  const u = getUserByTelegramId(ctx.from!.id);
   if (!u?.sign) return sendZodiacSelection(ctx);
 
   ensureUserDefaults(u);
 
-  u.weeklyDow = dow;
-  u.weeklyHour = hour;
-  saveUsers();
+  updateUser(ctx.from!.id, { weeklyDow: dow, weeklyHour: hour });
 
   ctx.answerCbQuery();
   ctx.replyWithHTML(`✅ Установлено: <b>${dow}</b> день, <b>${hour}:00</b>`, mainMenu);
@@ -722,12 +701,13 @@ async function sendDailyTask(ctx: any) {
     return ctx.reply("Пока заданий нет 💫", mainMenu);
   }
 
-  const index = u.dailyTaskIndex % dailyTasks.length;
+  const taskIndex = u.dailyTaskIndex ?? 0;
+  const index = taskIndex % dailyTasks.length;
   const raw = dailyTasks[index];
   const text = typeof raw === "string" ? raw : raw.text;
 
-  u.dailyTaskIndex = (u.dailyTaskIndex + 1) % dailyTasks.length;
-  saveUsers();
+  const newIndex = (taskIndex + 1) % dailyTasks.length;
+  updateUser(u.telegramId, { dailyTaskIndex: newIndex });
 
   await ctx.replyWithHTML(
     `🎯 <b>Задание дня</b>\n\n${escapeHTML(text)}`,
@@ -795,9 +775,8 @@ bot.action(/test_start_(.+)/, async (ctx) => {
   const id = ctx.match[1];
   const uid = ctx.from!.id;
 
-  const u = users[uid] || {};
-  if (!u.sign) {
-    users[uid] = u;
+  let u = getUserByTelegramId(uid);
+  if (!u || !u.sign) {
     return sendZodiacSelection(ctx);
   }
   ensureUserDefaults(u);
@@ -808,11 +787,12 @@ bot.action(/test_start_(.+)/, async (ctx) => {
     return ctx.reply("Ошибка загрузки теста.");
   }
 
-  u.currentTestId = id;
-  u.currentQuestionIndex = 0;
-  u.currentTestScore = 0;
-  users[uid] = u;
-  saveUsers();
+  updateUser(uid, {
+    currentTestId: id,
+    currentQuestionIndex: 0,
+    currentTestScore: 0
+  });
+  u = getUserByTelegramId(uid)!;
 
   await ctx.answerCbQuery();
   await sendTestQuestion(ctx, u, test);
@@ -823,7 +803,7 @@ bot.action(/answer_(\d+)_(\d+)/, async (ctx) => {
   const answerNum = Number(ctx.match[2]);
   const uid = ctx.from!.id;
 
-  const u = users[uid];
+  let u = getUserByTelegramId(uid);
   if (!u || !u.currentTestId) {
     await ctx.answerCbQuery("Тест не найден", { show_alert: true });
     return;
@@ -845,20 +825,28 @@ bot.action(/answer_(\d+)_(\d+)/, async (ctx) => {
   const scores: number[] = q.scores || [];
   const score = scores[answerNum - 1] || 0;
 
-  u.currentTestScore += score;
-  u.currentQuestionIndex += 1;
-  saveUsers();
+  const currentScore = u.currentTestScore ?? 0;
+  const currentQuestionIndex = u.currentQuestionIndex ?? 0;
+  const newScore = currentScore + score;
+  const newQuestionIndex = currentQuestionIndex + 1;
+  updateUser(uid, {
+    currentTestScore: newScore,
+    currentQuestionIndex: newQuestionIndex
+  });
+  u = getUserByTelegramId(uid)!;
 
   await ctx.answerCbQuery();
 
-  if (u.currentQuestionIndex >= test.questions.length) {
-    const totalScore = u.currentTestScore;
+  const updatedQuestionIndex = u.currentQuestionIndex ?? 0;
+  if (updatedQuestionIndex >= test.questions.length) {
+    const totalScore = u.currentTestScore ?? 0;
     const result = getTestResult(test, totalScore);
 
-    u.currentTestId = null;
-    u.currentQuestionIndex = 0;
-    u.currentTestScore = 0;
-    saveUsers();
+    updateUser(uid, {
+      currentTestId: null,
+      currentQuestionIndex: 0,
+      currentTestScore: 0
+    });
 
     let msg =
       `🧾 <b>${escapeHTML(test.title)}</b>\n\n` +
@@ -1005,7 +993,7 @@ bot.on("text", async (ctx, next) => {
   const uid = ctx.from?.id;
   if (!uid) return next();
 
-  const u = users[uid];
+  const u = getUserByTelegramId(uid);
 
   // Если НЕ ждём дату рождения — пропускаем дальше
   if (!u || !u.awaitingBirthDate) return next();
@@ -1024,19 +1012,21 @@ bot.on("text", async (ctx, next) => {
   }
 
   // Сохраняем и считаем
-  u.birthDate = parsed.display;
-  u.arcans = calculateMatrixArcans({ date: parsed.date });
-
-  u.awaitingBirthDate = false;
-  saveUsers();
+  const arcans = calculateMatrixArcans({ date: parsed.date });
+  updateUser(uid, {
+    birthDate: parsed.display,
+    arcans: arcans,
+    awaitingBirthDate: false
+  });
+  const updatedUser = getUserByTelegramId(uid)!;
 
   await ctx.replyWithHTML(
-    `✅ Дата рождения сохранена: <b>${escapeHTML(u.birthDate)}</b>\n` +
+    `✅ Дата рождения сохранена: <b>${escapeHTML(updatedUser.birthDate!)}</b>\n` +
     `Матрица рассчитана.\n\n` +
     `Теперь выбери раздел 👇`
   );
 
-  showMatrixSections(ctx, u);
+  showMatrixSections(ctx, updatedUser);
 });
 
 /* =========================
@@ -1044,7 +1034,7 @@ bot.on("text", async (ctx, next) => {
 ========================= */
 
 // Прогноз на день — фиксируется на календарные сутки
-function getDailyText(signEn: string, user: any): string {
+function getDailyText(signEn: string, user: User): string {
   const match = daily.find((r: any) => r.sign === signEn);
   if (!match) return "Нет данных 😔";
 
@@ -1059,18 +1049,22 @@ function getDailyText(signEn: string, user: any): string {
   }
 
   // иначе берём следующий по индексу
-  const textObj = match.texts[user.dailyIndex % match.texts.length];
-  user.dailyIndex = (user.dailyIndex + 1) % match.texts.length;
+  const dailyIndex = user.dailyIndex ?? 0;
+  const textObj = match.texts[dailyIndex % match.texts.length];
+  const newIndex = (dailyIndex + 1) % match.texts.length;
+  const text = textObj.text || textObj;
 
-  user.lastDailyDate = today;
-  user.lastDailyText = textObj.text || textObj;
-  saveUsers();
+  updateUser(user.telegramId, {
+    dailyIndex: newIndex,
+    lastDailyDate: today,
+    lastDailyText: text
+  });
 
-  return user.lastDailyText;
+  return text;
 }
 
 // Прогноз на неделю — фиксируется по неделе
-function getWeeklyText(signEn: string, user: any): string {
+function getWeeklyText(signEn: string, user: User): string {
   const match = weekly.find((r: any) => r.sign === signEn);
   if (!match) return "Нет данных 😔";
 
@@ -1082,14 +1076,18 @@ function getWeeklyText(signEn: string, user: any): string {
     return user.lastWeeklyText;
   }
 
-  const textObj = match.texts[user.weeklyIndex % match.texts.length];
-  user.weeklyIndex = (user.weeklyIndex + 1) % match.texts.length;
+  const weeklyIndex = user.weeklyIndex ?? 0;
+  const textObj = match.texts[weeklyIndex % match.texts.length];
+  const newIndex = (weeklyIndex + 1) % match.texts.length;
+  const text = textObj.text || textObj;
 
-  user.lastWeeklyDate = weekId;
-  user.lastWeeklyText = textObj.text || textObj;
-  saveUsers();
+  updateUser(user.telegramId, {
+    weeklyIndex: newIndex,
+    lastWeeklyDate: weekId,
+    lastWeeklyText: text
+  });
 
-  return user.lastWeeklyText;
+  return text;
 }
 
 // вычисляем номер недели ISO
@@ -1154,7 +1152,8 @@ function getEmojiBySign(signRu: string): string {
 cron.schedule(
   "*/10 * * * *",
   async () => {
-    for (const [id, u] of Object.entries(users)) {
+    const allUsers = getAllUsers();
+    for (const u of allUsers) {
       try {
         if (!u?.sign) continue;
         ensureUserDefaults(u);
@@ -1173,7 +1172,7 @@ cron.schedule(
           const signEn = zodiacMap[u.sign];
           const text = getDailyText(signEn, u);
           await bot.telegram.sendMessage(
-            Number(id),
+            u.telegramId,
             `🌞 Прогноз на сегодня для ${u.sign}:\n\n${text}`
           );
         }
@@ -1183,7 +1182,7 @@ cron.schedule(
           const signEn = zodiacMap[u.sign];
           const text = getWeeklyText(signEn, u);
           await bot.telegram.sendMessage(
-            Number(id),
+            u.telegramId,
             `🪐 Прогноз на неделю для ${u.sign}:\n\n${text}`
           );
         }
@@ -1197,7 +1196,7 @@ cron.schedule(
 
           if (desc) {
             await bot.telegram.sendMessage(
-              Number(id),
+              u.telegramId,
               `${desc.phase || getMoonPhase(lunarDay)}\n` +
                 `Сегодня ${lunarDay}-й лунный день — ${desc.name}\n\n` +
                 `Описание: ${desc.description}\n\n` +
@@ -1205,8 +1204,7 @@ cron.schedule(
             );
           }
 
-          u.lastLunarDay = lunarDay;
-          saveUsers();
+          updateUser(u.telegramId, { lastLunarDay: lunarDay });
         }
       } catch (err) {
         console.error("Ошибка рассылки:", err);
@@ -1220,8 +1218,8 @@ cron.schedule(
    Помощники
 ========================= */
 
-function getUserOrAsk(ctx: any) {
-  const u = users[ctx.from!.id];
+function getUserOrAsk(ctx: any): User | null {
+  const u = getUserByTelegramId(ctx.from!.id);
 
   if (!u || !u.sign || !zodiacMap[u.sign]) {
     ctx.reply("Похоже, данных нет. Выбери знак заново:");
@@ -1230,7 +1228,7 @@ function getUserOrAsk(ctx: any) {
   }
 
   ensureUserDefaults(u);
-  return u;
+  return getUserByTelegramId(ctx.from!.id);
 }
 
 /* =========================
