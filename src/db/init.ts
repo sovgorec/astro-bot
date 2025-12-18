@@ -35,5 +35,25 @@ db.exec(`
   )
 `);
 
+// Создаём таблицу subscriptions
+db.exec(`
+  CREATE TABLE IF NOT EXISTS subscriptions (
+    telegram_id TEXT PRIMARY KEY,
+    status TEXT NOT NULL,
+    expires_at TEXT NOT NULL
+  )
+`);
+
+// Создаём таблицу payments
+db.exec(`
+  CREATE TABLE IF NOT EXISTS payments (
+    invoice_id TEXT PRIMARY KEY,
+    telegram_id TEXT NOT NULL,
+    amount INTEGER NOT NULL,
+    status TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  )
+`);
+
 export default db;
 

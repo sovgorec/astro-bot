@@ -6,6 +6,8 @@ import { zodiacList, zodiacMap } from "./zodiac";
 import db from "./db/init";
 import { getUserByTelegramId, createUserIfNotExists, updateUser, getAllUsers, User } from "./db/userRepository";
 import { migrateUsersFromJson } from "./db/migrate";
+import { hasActiveSubscription } from "./db/subscriptionRepository";
+import { createPayment } from "./services/robokassa";
 
 dotenv.config();
 
@@ -101,11 +103,25 @@ function ensureUserDefaults(u: User): User {
   return u;
 }
 
+function showPaymentMessage(ctx: any): void {
+  const telegramId = ctx.from!.id;
+  const { paymentUrl } = createPayment(telegramId);
+  
+  ctx.replyWithHTML(
+    "🔒 <b>Эта функция доступна по подписке</b>\n\n" +
+    "Подписка на 30 дней — <b>299 ₽</b>\n\n" +
+    "Доступ к прогнозам на неделю и матрице судьбы.",
+    Markup.inlineKeyboard([
+      [Markup.button.url("💳 Оплатить", paymentUrl)]
+    ])
+  );
+}
+
 /* =========================
    Telegram Bot + главное меню
 ========================= */
 
-const bot = new Telegraf(process.env.BOT_TOKEN!);
+export const bot = new Telegraf(process.env.BOT_TOKEN!);
 bot.use(session());
 
 
@@ -324,6 +340,12 @@ function openMatrix(ctx: any) {
   if (!u) return;
   ensureUserDefaults(u);
 
+  const telegramId = ctx.from!.id;
+  if (!hasActiveSubscription(telegramId)) {
+    showPaymentMessage(ctx);
+    return;
+  }
+
   // Если дата рождения ещё не указана — просим ввести
   if (!u.birthDate || !u.arcans) {
     updateUser(u.telegramId, { awaitingBirthDate: true });
@@ -470,6 +492,12 @@ async function sendDaily(ctx: any) {
 async function sendWeekly(ctx: any) {
   const u = getUserOrAsk(ctx);
   if (!u || !u.sign) return;
+
+  const telegramId = ctx.from!.id;
+  if (!hasActiveSubscription(telegramId)) {
+    showPaymentMessage(ctx);
+    return;
+  }
 
   const signEn = zodiacMap[u.sign];
   const text = getWeeklyText(signEn, u);
@@ -1234,6 +1262,9 @@ function getUserOrAsk(ctx: any): User | null {
 /* =========================
    Запуск
 ========================= */
+
+// Запуск HTTP сервера для webhook'ов
+import "./server";
 
 bot.launch();
 console.log("✅ AstroGuide запущен: меню, матрица, тесты, Луна, прогнозы, рассылки!");
