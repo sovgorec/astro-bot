@@ -4,7 +4,7 @@ import db from "../db/init";
 const MERCHANT_LOGIN = process.env.ROBOKASSA_MERCHANT_LOGIN || "";
 const PASSWORD_1 = process.env.ROBOKASSA_PASSWORD_1 || "";
 const PASSWORD_2 = process.env.ROBOKASSA_PASSWORD_2 || "";
-const AMOUNT = 299; // Фиксированная цена 299 рублей
+const AMOUNT = 1; // Фиксированная цена 299 рублей
 const IS_TEST = process.env.ROBOKASSA_TEST === "true";
 const BASE_URL = IS_TEST 
   ? "https://auth.robokassa.ru/Merchant/Index.aspx"
