@@ -1,4 +1,4 @@
-import './server';
+require('./server');
 import { Telegraf, Markup, session } from "telegraf";
 import dotenv from "dotenv";
 import cron from "node-cron";
