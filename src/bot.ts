@@ -1264,9 +1264,6 @@ function getUserOrAsk(ctx: any): User | null {
    Запуск
 ========================= */
 
-// Запуск HTTP сервера для webhook'ов
-import "./server";
-
 bot.launch();
 console.log("✅ AstroGuide запущен: меню, матрица, тесты, Луна, прогнозы, рассылки!");
 /* =========================
