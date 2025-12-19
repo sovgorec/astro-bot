@@ -1,4 +1,4 @@
-import express from "express";
+import express, { type Request, type Response } from "express";
 import { bot } from "./bot";
 import { verifySignature, findPaymentByInvoiceId, updatePaymentStatus } from "./services/robokassa";
 import { activateSubscription } from "./db/subscriptionRepository";
@@ -8,7 +8,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Webhook для RoboKassa
-app.post("/webhook/robokassa", async (req, res) => {
+app.post("/webhook/robokassa", async (req: Request, res: Response) => {
   try {
     const { OutSum, InvId, SignatureValue } = req.body;
     
