@@ -1,16 +1,25 @@
 import crypto from "crypto";
 import db from "../db/init";
 
-const MERCHANT_LOGIN = process.env.ROBOKASSA_MERCHANT_LOGIN || "";
+const MERCHANT_LOGIN = process.env.ROBOKASSA_MERCHANT_LOGIN;
 const PASSWORD_1 = process.env.ROBOKASSA_PASSWORD_1 || "";
 const PASSWORD_2 = process.env.ROBOKASSA_PASSWORD_2 || "";
-const AMOUNT = 149;
+const AMOUNT = 50;
 const IS_TEST = process.env.ROBOKASSA_TEST === "true";
 const BASE_URL = IS_TEST 
   ? "https://auth.robokassa.ru/Merchant/Index.aspx"
   : "https://auth.robokassa.ru/Merchant/Index.aspx";
 
 export function createPayment(telegramId: number): { invoiceId: number; paymentUrl: string } {
+  // Проверяем наличие MerchantLogin
+  if (!MERCHANT_LOGIN) {
+    throw new Error("ROBOKASSA_MERCHANT_LOGIN is not set");
+  }
+  
+  if (!PASSWORD_1) {
+    throw new Error("ROBOKASSA_PASSWORD_1 is not set");
+  }
+  
   // Сначала создаём платеж в БД
   const stmt = db.prepare(`
     INSERT INTO payments (telegram_id, amount, status, created_at)
@@ -21,7 +30,7 @@ export function createPayment(telegramId: number): { invoiceId: number; paymentU
   // Используем ID из БД как InvId
   const invoiceId = result.lastInsertRowid as number;
   
-  // Генерируем подпись
+  // Генерируем подпись по документации RoboKassa: md5(MerchantLogin:OutSum:InvId:Password#1)
   const signatureString = `${MERCHANT_LOGIN}:${AMOUNT}:${invoiceId}:${PASSWORD_1}`;
   const signature = crypto.createHash("md5").update(signatureString).digest("hex");
   
