@@ -54,9 +54,24 @@ export function createPayment(telegramId: number): { invoiceId: number; paymentU
     signatureString
   });
   
-  // Формируем URL вручную (SignatureValue БЕЗ encodeURIComponent)
-  const description = encodeURIComponent("Подписка на 30 дней");
-  const paymentUrl = `${BASE_URL}?MerchantLogin=${MERCHANT_LOGIN}&OutSum=${outSum}&InvId=${invoiceId}&Description=${description}&SignatureValue=${signature}&IsTest=${IS_TEST ? "1" : "0"}`;
+  // Формируем URL с обязательными параметрами для Telegram-магазина
+  const description = "Подписка на 30 дней";
+  const params = new URLSearchParams({
+    MerchantLogin: MERCHANT_LOGIN!,
+    OutSum: outSum,
+    InvId: invoiceId.toString(),
+    Description: description,
+    SignatureValue: signature,
+    Culture: "ru",
+    Email: "user@telegram.local"
+  });
+  
+  // Добавляем IsTest, если нужно
+  if (IS_TEST) {
+    params.append("IsTest", "1");
+  }
+  
+  const paymentUrl = `${BASE_URL}?${params.toString()}`;
   
   return { invoiceId, paymentUrl };
 }
