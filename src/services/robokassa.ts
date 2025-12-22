@@ -32,21 +32,31 @@ export function createPayment(telegramId: number): { invoiceId: number; paymentU
   // Используем ID из БД как InvId
   const invoiceId = result.lastInsertRowid as number;
   
-  // Генерируем подпись по документации RoboKassa: md5(MerchantLogin:OutSum:InvId:Password#1)
-  const signatureString = `${MERCHANT_LOGIN}:${AMOUNT}:${invoiceId}:${PASSWORD_1}`;
-  const signature = crypto.createHash("md5").update(signatureString).digest("hex");
+  // Проверяем, что InvId валидный
+  if (!invoiceId || invoiceId <= 0) {
+    console.error("❌ Invalid invoiceId:", invoiceId);
+    return null;
+  }
   
-  // Формируем URL
-  const params = new URLSearchParams({
-    MerchantLogin: MERCHANT_LOGIN,
-    OutSum: String(AMOUNT),
-    InvId: String(invoiceId),
-    SignatureValue: signature,
-    Description: "Подписка на 30 дней",
-    IsTest: IS_TEST ? "1" : "0"
+  // OutSum должен быть строкой с 2 знаками после запятой
+  const outSum = Number(AMOUNT).toFixed(2);
+  
+  // Генерируем подпись по документации RoboKassa: md5(MerchantLogin:OutSum:InvId:Password#1)
+  const signatureString = `${MERCHANT_LOGIN}:${outSum}:${invoiceId}:${PASSWORD_1}`;
+  const signature = crypto.createHash("md5").update(signatureString).digest("hex").toLowerCase();
+  
+  // Отладка (временно)
+  console.log("🔍 RoboKassa payment signature:", {
+    merchantLogin: MERCHANT_LOGIN,
+    outSum,
+    invId: invoiceId,
+    signature,
+    signatureString
   });
   
-  const paymentUrl = `${BASE_URL}?${params.toString()}`;
+  // Формируем URL вручную (SignatureValue БЕЗ encodeURIComponent)
+  const description = encodeURIComponent("Подписка на 30 дней");
+  const paymentUrl = `${BASE_URL}?MerchantLogin=${MERCHANT_LOGIN}&OutSum=${outSum}&InvId=${invoiceId}&Description=${description}&SignatureValue=${signature}&IsTest=${IS_TEST ? "1" : "0"}`;
   
   return { invoiceId, paymentUrl };
 }
