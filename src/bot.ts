@@ -1212,22 +1212,40 @@ cron.schedule(
 
         // 🌞 Daily
         if (hour === u.dailyHour && minute < 10) {
-          const signEn = zodiacMap[u.sign];
-          const text = getDailyText(signEn, u);
-          await bot.telegram.sendMessage(
-            u.telegramId,
-            `🌞 Прогноз на сегодня для ${u.sign}:\n\n${text}`
-          );
+          try {
+            const signEn = zodiacMap[u.sign];
+            const text = getDailyText(signEn, u);
+            await bot.telegram.sendMessage(
+              u.telegramId,
+              `🌞 Прогноз на сегодня для ${u.sign}:\n\n${text}`
+            );
+          } catch (err: any) {
+            if (err?.response?.error_code === 403) {
+              console.warn(`⚠️ User ${u.telegramId} blocked the bot (daily forecast)`);
+              // Продолжаем работу, не ломаем процесс
+            } else {
+              console.error(`❌ Error sending daily forecast to ${u.telegramId}:`, err?.message || err);
+            }
+          }
         }
 
         // 🪐 Weekly
         if (dow === u.weeklyDow && hour === u.weeklyHour && minute < 10) {
-          const signEn = zodiacMap[u.sign];
-          const text = getWeeklyText(signEn, u);
-          await bot.telegram.sendMessage(
-            u.telegramId,
-            `🪐 Прогноз на неделю для ${u.sign}:\n\n${text}`
-          );
+          try {
+            const signEn = zodiacMap[u.sign];
+            const text = getWeeklyText(signEn, u);
+            await bot.telegram.sendMessage(
+              u.telegramId,
+              `🪐 Прогноз на неделю для ${u.sign}:\n\n${text}`
+            );
+          } catch (err: any) {
+            if (err?.response?.error_code === 403) {
+              console.warn(`⚠️ User ${u.telegramId} blocked the bot (weekly forecast)`);
+              // Продолжаем работу, не ломаем процесс
+            } else {
+              console.error(`❌ Error sending weekly forecast to ${u.telegramId}:`, err?.message || err);
+            }
+          }
         }
 
         // 🌕 Lunar Day Push
@@ -1238,16 +1256,28 @@ cron.schedule(
             moon.find((d: any) => Number(d.day) === lunarDay);
 
           if (desc) {
-            await bot.telegram.sendMessage(
-              u.telegramId,
-              `${desc.phase || getMoonPhase(lunarDay)}\n` +
-                `Сегодня ${lunarDay}-й лунный день — ${desc.name}\n\n` +
-                `Описание: ${desc.description}\n\n` +
-                `Совет: ${desc.advice}`
-            );
+            try {
+              await bot.telegram.sendMessage(
+                u.telegramId,
+                `${desc.phase || getMoonPhase(lunarDay)}\n` +
+                  `Сегодня ${lunarDay}-й лунный день — ${desc.name}\n\n` +
+                  `Описание: ${desc.description}\n\n` +
+                  `Совет: ${desc.advice}`
+              );
+              updateUser(u.telegramId, { lastLunarDay: lunarDay });
+            } catch (err: any) {
+              if (err?.response?.error_code === 403) {
+                console.warn(`⚠️ User ${u.telegramId} blocked the bot (lunar day)`);
+                // Обновляем lastLunarDay, чтобы не повторять попытку
+                updateUser(u.telegramId, { lastLunarDay: lunarDay });
+              } else {
+                console.error(`❌ Error sending lunar day to ${u.telegramId}:`, err?.message || err);
+              }
+            }
+          } else {
+            // Если описания нет, всё равно обновляем день
+            updateUser(u.telegramId, { lastLunarDay: lunarDay });
           }
-
-          updateUser(u.telegramId, { lastLunarDay: lunarDay });
         }
       } catch (err) {
         console.error("Ошибка рассылки:", err);
