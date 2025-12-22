@@ -1,6 +1,6 @@
 import express, { type Request, type Response } from "express";
 import { bot } from "./bot";
-import { verifySignature, findPaymentByInvoiceId, updatePaymentStatus } from "./services/robokassa";
+import { verifySignature, findPaymentById, updatePaymentStatus } from "./services/robokassa";
 import { activateSubscription } from "./db/subscriptionRepository";
 
 const app = express();
@@ -17,16 +17,21 @@ app.post("/webhook/robokassa", async (req: Request, res: Response) => {
     }
 
     const amount = parseFloat(OutSum);
-    const invoiceId = InvId;
+    const invoiceId = Number(InvId);
     const signature = SignatureValue;
+
+    // Проверяем, что InvId - валидное число
+    if (isNaN(invoiceId) || invoiceId <= 0) {
+      return res.status(400).send("Invalid InvId");
+    }
 
     // Проверяем подпись
     if (!verifySignature(amount, invoiceId, signature)) {
       return res.status(400).send("Invalid signature");
     }
 
-    // Находим платеж
-    const payment = findPaymentByInvoiceId(invoiceId);
+    // Находим платеж по ID
+    const payment = findPaymentById(invoiceId);
     if (!payment) {
       return res.status(404).send("Payment not found");
     }

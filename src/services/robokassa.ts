@@ -10,20 +10,16 @@ const BASE_URL = IS_TEST
   ? "https://auth.robokassa.ru/Merchant/Index.aspx"
   : "https://auth.robokassa.ru/Merchant/Index.aspx";
 
-export function generateInvoiceId(telegramId: number): string {
-  const timestamp = Date.now();
-  return `invoice_${telegramId}_${timestamp}`;
-}
-
-export function createPayment(telegramId: number): { invoiceId: string; paymentUrl: string } {
-  const invoiceId = generateInvoiceId(telegramId);
-  
-  // Сохраняем платеж в БД
+export function createPayment(telegramId: number): { invoiceId: number; paymentUrl: string } {
+  // Сначала создаём платеж в БД
   const stmt = db.prepare(`
-    INSERT INTO payments (invoice_id, telegram_id, amount, status, created_at)
-    VALUES (?, ?, ?, 'pending', ?)
+    INSERT INTO payments (telegram_id, amount, status, created_at)
+    VALUES (?, ?, 'pending', ?)
   `);
-  stmt.run(invoiceId, String(telegramId), AMOUNT, new Date().toISOString());
+  const result = stmt.run(String(telegramId), AMOUNT, new Date().toISOString());
+  
+  // Используем ID из БД как InvId
+  const invoiceId = result.lastInsertRowid as number;
   
   // Генерируем подпись
   const signatureString = `${MERCHANT_LOGIN}:${AMOUNT}:${invoiceId}:${PASSWORD_1}`;
@@ -33,7 +29,7 @@ export function createPayment(telegramId: number): { invoiceId: string; paymentU
   const params = new URLSearchParams({
     MerchantLogin: MERCHANT_LOGIN,
     OutSum: String(AMOUNT),
-    InvId: invoiceId,
+    InvId: String(invoiceId),
     SignatureValue: signature,
     Description: "Подписка на 30 дней",
     IsTest: IS_TEST ? "1" : "0"
@@ -46,7 +42,7 @@ export function createPayment(telegramId: number): { invoiceId: string; paymentU
 
 export function verifySignature(
   amount: number,
-  invoiceId: string,
+  invoiceId: number,
   signature: string
 ): boolean {
   const signatureString = `${amount}:${invoiceId}:${PASSWORD_2}`;
@@ -55,15 +51,15 @@ export function verifySignature(
   return calculatedSignature === signature.toUpperCase();
 }
 
-export function findPaymentByInvoiceId(invoiceId: string): { telegram_id: string; status: string } | null {
-  const stmt = db.prepare("SELECT telegram_id, status FROM payments WHERE invoice_id = ?");
-  const row = stmt.get(invoiceId) as { telegram_id: string; status: string } | undefined;
+export function findPaymentById(id: number): { telegram_id: string; status: string } | null {
+  const stmt = db.prepare("SELECT telegram_id, status FROM payments WHERE id = ?");
+  const row = stmt.get(id) as { telegram_id: string; status: string } | undefined;
   
   return row || null;
 }
 
-export function updatePaymentStatus(invoiceId: string, status: string): void {
-  const stmt = db.prepare("UPDATE payments SET status = ? WHERE invoice_id = ?");
-  stmt.run(status, invoiceId);
+export function updatePaymentStatus(id: number, status: string): void {
+  const stmt = db.prepare("UPDATE payments SET status = ? WHERE id = ?");
+  stmt.run(status, id);
 }
 
