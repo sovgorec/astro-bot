@@ -125,6 +125,12 @@ function showPaymentMessage(ctx: any): void {
 export const bot = new Telegraf(process.env.BOT_TOKEN!);
 bot.use(session());
 
+// Диагностический лог апдейтов
+bot.use((ctx, next) => {
+  console.log("UPDATE RECEIVED:", ctx.update.update_id);
+  return next();
+});
+
 
 
 const mainMenu = Markup.keyboard([
@@ -1263,9 +1269,6 @@ function getUserOrAsk(ctx: any): User | null {
 /* =========================
    Запуск
 ========================= */
-
-bot.launch();
-console.log("✅ AstroGuide запущен: меню, матрица, тесты, Луна, прогнозы, рассылки!");
 /* =========================
    Онбординг: приветствие + соглашение
 ========================= */
@@ -1325,3 +1328,43 @@ bot.action("accept_terms", async (ctx) => {
 
   await ctx.reply("✨ Выбери свой знак Зодиака:", zodiacFirstMenu);
 });
+
+/* =========================
+   Запуск бота (в самом конце, после всех обработчиков)
+========================= */
+
+let botStarted = false;
+
+async function startBot() {
+  if (botStarted) {
+    console.warn("⚠️ Bot already started, ignoring duplicate launch");
+    return;
+  }
+  
+  botStarted = true;
+  
+  try {
+    await bot.launch();
+    console.log("✅ AstroGuide запущен: меню, матрица, тесты, Луна, прогнозы, рассылки!");
+  } catch (err) {
+    console.error("❌ Ошибка запуска бота:", err);
+    botStarted = false;
+    throw err;
+  }
+}
+
+// Корректное завершение
+process.once("SIGINT", () => {
+  console.log("SIGINT received, stopping bot...");
+  bot.stop("SIGINT");
+  process.exit(0);
+});
+
+process.once("SIGTERM", () => {
+  console.log("SIGTERM received, stopping bot...");
+  bot.stop("SIGTERM");
+  process.exit(0);
+});
+
+// Запускаем бота
+startBot();
