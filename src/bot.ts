@@ -127,7 +127,7 @@ bot.use(session());
 
 // Диагностический лог апдейтов
 bot.use((ctx, next) => {
-  console.log("UPDATE RECEIVED:", ctx.update.update_id);
+  console.log("UPDATE:", ctx.update.update_id);
   return next();
 });
 
@@ -1344,7 +1344,13 @@ async function startBot() {
   botStarted = true;
   
   try {
+    // КРИТИЧНО: Удаляем webhook перед запуском polling
+    await bot.telegram.deleteWebhook({ drop_pending_updates: true });
+    console.log("🧹 Telegram webhook deleted, pending updates dropped");
+    
+    // Запускаем бота в режиме polling
     await bot.launch();
+    console.log("🤖 Bot started in polling mode");
     console.log("✅ AstroGuide запущен: меню, матрица, тесты, Луна, прогнозы, рассылки!");
   } catch (err) {
     console.error("❌ Ошибка запуска бота:", err);
