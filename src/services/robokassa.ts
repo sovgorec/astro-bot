@@ -10,14 +10,16 @@ const BASE_URL = IS_TEST
   ? "https://auth.robokassa.ru/Merchant/Index.aspx"
   : "https://auth.robokassa.ru/Merchant/Index.aspx";
 
-export function createPayment(telegramId: number): { invoiceId: number; paymentUrl: string } {
+export function createPayment(telegramId: number): { invoiceId: number; paymentUrl: string } | null {
   // Проверяем наличие MerchantLogin
   if (!MERCHANT_LOGIN) {
-    throw new Error("ROBOKASSA_MERCHANT_LOGIN is not set");
+    console.error("❌ ROBOKASSA_MERCHANT_LOGIN is not set");
+    return null;
   }
   
   if (!PASSWORD_1) {
-    throw new Error("ROBOKASSA_PASSWORD_1 is not set");
+    console.error("❌ ROBOKASSA_PASSWORD_1 is not set");
+    return null;
   }
   
   // Сначала создаём платеж в БД

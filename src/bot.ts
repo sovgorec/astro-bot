@@ -1,6 +1,9 @@
+// КРИТИЧНО: Загружаем env в самом начале, ДО всех импортов
+import dotenv from "dotenv";
+dotenv.config();
+
 require('./server');
 import { Telegraf, Markup, session } from "telegraf";
-import dotenv from "dotenv";
 import cron from "node-cron";
 import fs from "fs";
 import { zodiacList, zodiacMap } from "./zodiac";
@@ -9,8 +12,6 @@ import { getUserByTelegramId, createUserIfNotExists, updateUser, getAllUsers, Us
 import { migrateUsersFromJson } from "./db/migrate";
 import { hasActiveSubscription } from "./db/subscriptionRepository";
 import { createPayment } from "./services/robokassa";
-
-dotenv.config();
 
 // Инициализация БД и миграция данных
 migrateUsersFromJson();
@@ -104,16 +105,23 @@ function ensureUserDefaults(u: User): User {
   return u;
 }
 
-function showPaymentMessage(ctx: any): void {
+async function showPaymentMessage(ctx: any): Promise<void> {
   const telegramId = ctx.from!.id;
-  const { paymentUrl } = createPayment(telegramId);
+  const payment = createPayment(telegramId);
   
-  ctx.replyWithHTML(
+  if (!payment) {
+    await ctx.reply(
+      "⚠️ Оплата временно недоступна. Попробуйте позже."
+    );
+    return;
+  }
+  
+  await ctx.replyWithHTML(
     "🔒 <b>Эта функция доступна по подписке</b>\n\n" +
     "Подписка на 30 дней — <b>50 ₽</b>\n\n" +
     "Доступ к прогнозам на неделю и матрице судьбы.",
     Markup.inlineKeyboard([
-      [Markup.button.url("💳 Оплатить", paymentUrl)]
+      [Markup.button.url("💳 Оплатить", payment.paymentUrl)]
     ])
   );
 }
@@ -342,14 +350,14 @@ bot.hears("⚙️ Настройки", (ctx) => showSettings(ctx));
    Матрица судьбы — вход и разделы
 ========================= */
 
-function openMatrix(ctx: any) {
+async function openMatrix(ctx: any) {
   const u = getUserOrAsk(ctx);
   if (!u) return;
   ensureUserDefaults(u);
 
   const telegramId = ctx.from!.id;
   if (!hasActiveSubscription(telegramId)) {
-    showPaymentMessage(ctx);
+    await showPaymentMessage(ctx);
     return;
   }
 
@@ -502,7 +510,7 @@ async function sendWeekly(ctx: any) {
 
   const telegramId = ctx.from!.id;
   if (!hasActiveSubscription(telegramId)) {
-    showPaymentMessage(ctx);
+    await showPaymentMessage(ctx);
     return;
   }
 
