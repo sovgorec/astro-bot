@@ -45,47 +45,16 @@ db.exec(`
 `);
 
 // Создаём таблицу payments
-// Проверяем структуру существующей таблицы и мигрируем при необходимости
-try {
-  const tableInfo = db.prepare("PRAGMA table_info(payments)").all() as Array<{ name: string; type: string; pk: number }>;
-  const hasOldStructure = tableInfo.some(col => col.name === "invoice_id" && col.pk === 1);
-  
-  if (hasOldStructure) {
-    // Старая структура: пересоздаём таблицу
-    db.exec(`
-      DROP TABLE IF EXISTS payments;
-      CREATE TABLE payments (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        telegram_id TEXT NOT NULL,
-        amount INTEGER NOT NULL,
-        status TEXT NOT NULL,
-        created_at TEXT NOT NULL
-      )
-    `);
-  } else {
-    // Новая структура или таблица не существует
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS payments (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        telegram_id TEXT NOT NULL,
-        amount INTEGER NOT NULL,
-        status TEXT NOT NULL,
-        created_at TEXT NOT NULL
-      )
-    `);
-  }
-} catch (err) {
-  // Если таблицы нет, создаём новую
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS payments (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      telegram_id TEXT NOT NULL,
-      amount INTEGER NOT NULL,
-      status TEXT NOT NULL,
-      created_at TEXT NOT NULL
-    )
-  `);
-}
+// id используется как invoice_id (Date.now()), поэтому без AUTOINCREMENT
+db.exec(`
+  CREATE TABLE IF NOT EXISTS payments (
+    id INTEGER PRIMARY KEY,
+    telegram_id TEXT NOT NULL,
+    amount INTEGER NOT NULL,
+    status TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  )
+`);
 
 export default db;
 
