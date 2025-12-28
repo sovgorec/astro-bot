@@ -1,6 +1,29 @@
 import crypto from "crypto";
 import db from "../db/init";
 
+/**
+ * RoboKassa Merchant API интеграция
+ * 
+ * ВАЖНО: Ошибка 29 "магазин недоступен" может быть связана с типом магазина RoboKassa.
+ * Если MerchantLogin имеет формат @botname, это указывает на Telegram-магазин.
+ * RoboKassa может требовать специальной настройки магазина для работы с Telegram-ботами.
+ * Это административное ограничение, а не ошибка в коде/подписи.
+ * 
+ * ПРИМЕЧАНИЕ ДЛЯ БУДУЩЕГО: 
+ * Для переключения на Telegram Payments (sendInvoice) потребуется:
+ * 1. Создать альтернативную функцию createTelegramPayment(telegramId) в этом же файле
+ * 2. Изменить showPaymentMessage в bot.ts для использования новой функции
+ * 3. Логика подписок (subscriptionRepository) остается без изменений
+ * 4. Webhook для Telegram Payments обрабатывается через bot.on('pre_checkout_query') и bot.on('successful_payment')
+ */
+
+// Тип возвращаемого значения для платежной системы (общий для RoboKassa и будущего Telegram Payments)
+export interface PaymentResult {
+  invoiceId: number;
+  paymentUrl?: string; // Для RoboKassa - URL редиректа
+  // Для Telegram Payments можно добавить invoice payload или другие поля
+}
+
 const MERCHANT_LOGIN = process.env.ROBOKASSA_MERCHANT_LOGIN;
 const PASSWORD_1 = process.env.ROBOKASSA_PASSWORD_1 || "";
 const PASSWORD_2 = process.env.ROBOKASSA_PASSWORD_2 || "";
@@ -10,11 +33,28 @@ const BASE_URL = IS_TEST
   ? "https://auth.robokassa.ru/Merchant/Index.aspx"
   : "https://auth.robokassa.ru/Merchant/Index.aspx";
 
-export function createPayment(telegramId: number): { invoiceId: number; paymentUrl: string } | null {
+/**
+ * Создает платеж через RoboKassa Merchant API
+ * 
+ * Формула подписи: MerchantLogin:OutSum:InvId:Password#1 (НЕ МЕНЯТЬ)
+ * InvId: Date.now() для уникальности (НЕ МЕНЯТЬ)
+ * OutSum: toFixed(2) формат (НЕ МЕНЯТЬ)
+ * 
+ * @param telegramId - ID пользователя Telegram
+ * @returns PaymentResult с invoiceId и paymentUrl, или null при ошибке
+ */
+export function createPayment(telegramId: number): PaymentResult | null {
   // Проверяем наличие MerchantLogin (строго из process.env, без модификаций)
   if (!MERCHANT_LOGIN) {
     console.error("❌ ROBOKASSA_MERCHANT_LOGIN is not set");
     return null;
+  }
+  
+  // ВАЖНО: Если MerchantLogin имеет формат @botname, это Telegram-магазин
+  // Ошибка 29 может быть административным ограничением (магазин не настроен для Telegram)
+  if (MERCHANT_LOGIN.startsWith("@")) {
+    console.warn("⚠️ MerchantLogin имеет формат @botname (Telegram-магазин)");
+    console.warn("⚠️ Если возникает ошибка 29, проверьте настройки магазина в личном кабинете RoboKassa");
   }
   
   if (!PASSWORD_1) {
@@ -38,6 +78,7 @@ export function createPayment(telegramId: number): { invoiceId: number; paymentU
   const merchantLogin = MERCHANT_LOGIN;
   
   // Генерируем подпись строго по формуле: MerchantLogin:OutSum:InvId:Password#1
+  // ВАЖНО: Формула корректна, НЕ МЕНЯТЬ
   const signatureString = `${merchantLogin}:${outSum}:${invoiceId}:${PASSWORD_1}`;
   const signature = crypto.createHash("md5").update(signatureString).digest("hex").toLowerCase();
   
@@ -48,6 +89,11 @@ export function createPayment(telegramId: number): { invoiceId: number; paymentU
   console.log("  invId:", invoiceId);
   console.log("  signatureString:", signatureString);
   console.log("  signature:", signature);
+  
+  // ВАЖНО: Если RoboKassa возвращает ошибку 29 "магазин недоступен":
+  // - Это НЕ ошибка подписи (подпись рассчитана корректно)
+  // - Это административное ограничение (магазин не настроен/не активен для Telegram)
+  // - Проверьте настройки магазина в личном кабинете RoboKassa
   
   // Формируем URL с обязательными параметрами для Telegram-магазина
   // MerchantLogin используется БЕЗ модификаций (URLSearchParams правильно закодирует для URL)
@@ -128,4 +174,63 @@ export function updatePaymentStatus(id: number, status: string): void {
   const stmt = db.prepare("UPDATE payments SET status = ? WHERE id = ?");
   stmt.run(status, id);
 }
+
+/**
+ * БУДУЩАЯ РЕАЛИЗАЦИЯ: Telegram Payments (sendInvoice)
+ * 
+ * Пример реализации для переключения с RoboKassa на Telegram Payments:
+ * 
+ * export async function createTelegramPayment(
+ *   bot: Telegraf,
+ *   telegramId: number
+ * ): Promise<PaymentResult | null> {
+ *   const invoiceId = Date.now();
+ *   
+ *   // Сохраняем платеж в БД
+ *   const stmt = db.prepare(`
+ *     INSERT INTO payments (id, telegram_id, amount, status, created_at)
+ *     VALUES (?, ?, ?, 'pending', ?)
+ *   `);
+ *   stmt.run(invoiceId, String(telegramId), AMOUNT, new Date().toISOString());
+ *   
+ *   // Отправляем invoice через Telegram Bot API
+ *   try {
+ *     await bot.telegram.sendInvoice(telegramId, {
+ *       title: "Подписка на 30 дней",
+ *       description: "Доступ к прогнозам на неделю и матрице судьбы",
+ *       payload: String(invoiceId),
+ *       provider_token: process.env.TELEGRAM_PAYMENT_PROVIDER_TOKEN!,
+ *       currency: "RUB",
+ *       prices: [{ label: "Подписка", amount: AMOUNT * 100 }] // в копейках
+ *     });
+ *     
+ *     return { invoiceId }; // paymentUrl не нужен для Telegram Payments
+ *   } catch (err) {
+ *     console.error("Ошибка отправки invoice:", err);
+ *     return null;
+ *   }
+ * }
+ * 
+ * Обработчики в bot.ts:
+ * 
+ * bot.on('pre_checkout_query', async (ctx) => {
+ *   const invoiceId = Number(ctx.preCheckoutQuery.invoice_payload);
+ *   const payment = findPaymentById(invoiceId);
+ *   if (payment && payment.status === 'pending') {
+ *     await ctx.answerPreCheckoutQuery(true);
+ *   } else {
+ *     await ctx.answerPreCheckoutQuery(false, { error_message: 'Payment not found' });
+ *   }
+ * });
+ * 
+ * bot.on('successful_payment', async (ctx) => {
+ *   const invoiceId = Number(ctx.message.successful_payment.invoice_payload);
+ *   const payment = findPaymentById(invoiceId);
+ *   if (payment && payment.status !== 'paid') {
+ *     updatePaymentStatus(invoiceId, 'paid');
+ *     activateSubscription(Number(payment.telegram_id), 30);
+ *     await ctx.reply('✅ Подписка активирована на 30 дней');
+ *   }
+ * });
+ */
 

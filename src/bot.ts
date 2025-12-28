@@ -105,6 +105,19 @@ function ensureUserDefaults(u: User): User {
   return u;
 }
 
+/**
+ * Показывает сообщение с предложением оплаты подписки
+ * 
+ * ТЕКУЩАЯ РЕАЛИЗАЦИЯ: RoboKassa Merchant API (редирект на внешний URL)
+ * 
+ * ДЛЯ БУДУЩЕГО ПЕРЕКЛЮЧЕНИЯ НА TELEGRAM PAYMENTS:
+ * 1. Заменить createPayment() на createTelegramPayment() из services/robokassa.ts
+ * 2. Использовать ctx.replyWithInvoice() вместо replyWithHTML + button.url
+ * 3. Добавить обработчики:
+ *    - bot.on('pre_checkout_query', ...) для подтверждения платежа
+ *    - bot.on('successful_payment', ...) для активации подписки (вызов activateSubscription)
+ * 4. Логика подписок (subscriptionRepository) остается БЕЗ ИЗМЕНЕНИЙ
+ */
 async function showPaymentMessage(ctx: any): Promise<void> {
   const telegramId = ctx.from!.id;
   const payment = createPayment(telegramId);
@@ -116,14 +129,25 @@ async function showPaymentMessage(ctx: any): Promise<void> {
     return;
   }
   
+  // RoboKassa: редирект на внешний URL
   await ctx.replyWithHTML(
     "🔒 <b>Эта функция доступна по подписке</b>\n\n" +
     "Подписка на 30 дней — <b>50 ₽</b>\n\n" +
     "Доступ к прогнозам на неделю и матрице судьбы.",
     Markup.inlineKeyboard([
-      [Markup.button.url("💳 Оплатить", payment.paymentUrl)]
+      [Markup.button.url("💳 Оплатить", payment.paymentUrl!)]
     ])
   );
+  
+  // Для Telegram Payments будет:
+  // await ctx.replyWithInvoice({
+  //   title: "Подписка на 30 дней",
+  //   description: "Доступ к прогнозам на неделю и матрице судьбы",
+  //   payload: String(payment.invoiceId),
+  //   provider_token: "...", // из env
+  //   currency: "RUB",
+  //   prices: [{ label: "Подписка", amount: 5000 }] // копейки
+  // });
 }
 
 /* =========================
