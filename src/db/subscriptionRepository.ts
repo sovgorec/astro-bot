@@ -25,3 +25,4 @@ export function activateSubscription(telegramId: number, days: number = 30): voi
   stmt.run(String(telegramId), expiresAtStr);
 }
 
+
