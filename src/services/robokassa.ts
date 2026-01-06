@@ -24,10 +24,14 @@ export interface PaymentResult {
   // Для Telegram Payments можно добавить invoice payload или другие поля
 }
 
+// Константы подписки
+export const SUBSCRIPTION_PRICE = 149; // Цена подписки в рублях
+export const SUBSCRIPTION_DAYS = 30; // Срок подписки в днях
+
 const MERCHANT_LOGIN = process.env.ROBOKASSA_MERCHANT_LOGIN;
 const PASSWORD_1 = process.env.ROBOKASSA_PASSWORD_1 || "";
 const PASSWORD_2 = process.env.ROBOKASSA_PASSWORD_2 || "";
-const AMOUNT = 50;
+const AMOUNT = SUBSCRIPTION_PRICE;
 const IS_TEST = process.env.ROBOKASSA_TEST === "true";
 const BASE_URL = IS_TEST 
   ? "https://auth.robokassa.ru/Merchant/Index.aspx"
@@ -97,7 +101,7 @@ export function createPayment(telegramId: number): PaymentResult | null {
   
   // Формируем URL с обязательными параметрами для Telegram-магазина
   // MerchantLogin используется БЕЗ модификаций (URLSearchParams правильно закодирует для URL)
-  const description = "Подписка на 30 дней";
+  const description = `Подписка на ${SUBSCRIPTION_DAYS} дней`;
   const params = new URLSearchParams({
     MerchantLogin: merchantLogin,
     OutSum: outSum,
@@ -196,12 +200,12 @@ export function updatePaymentStatus(id: number, status: string): void {
  *   // Отправляем invoice через Telegram Bot API
  *   try {
  *     await bot.telegram.sendInvoice(telegramId, {
- *       title: "Подписка на 30 дней",
- *       description: "Доступ к прогнозам на неделю и матрице судьбы",
+ *       title: `Подписка на ${SUBSCRIPTION_DAYS} дней`,
+ *       description: "Полный доступ ко всем функциям бота",
  *       payload: String(invoiceId),
  *       provider_token: process.env.TELEGRAM_PAYMENT_PROVIDER_TOKEN!,
  *       currency: "RUB",
- *       prices: [{ label: "Подписка", amount: AMOUNT * 100 }] // в копейках
+ *       prices: [{ label: "Подписка", amount: SUBSCRIPTION_PRICE * 100 }] // в копейках
  *     });
  *     
  *     return { invoiceId }; // paymentUrl не нужен для Telegram Payments
@@ -228,8 +232,8 @@ export function updatePaymentStatus(id: number, status: string): void {
  *   const payment = findPaymentById(invoiceId);
  *   if (payment && payment.status !== 'paid') {
  *     updatePaymentStatus(invoiceId, 'paid');
- *     activateSubscription(Number(payment.telegram_id), 30);
- *     await ctx.reply('✅ Подписка активирована на 30 дней');
+ *     activateSubscription(Number(payment.telegram_id), SUBSCRIPTION_DAYS);
+ *     await ctx.reply(`✅ Подписка активирована на ${SUBSCRIPTION_DAYS} дней`);
  *   }
  * });
  */

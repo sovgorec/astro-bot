@@ -1,6 +1,6 @@
 import express, { type Request, type Response } from "express";
 import { bot } from "./bot";
-import { verifySignature, findPaymentById, updatePaymentStatus } from "./services/robokassa";
+import { verifySignature, findPaymentById, updatePaymentStatus, SUBSCRIPTION_DAYS } from "./services/robokassa";
 import { activateSubscription } from "./db/subscriptionRepository";
 
 const app = express();
@@ -46,13 +46,13 @@ app.post("/webhook/robokassa", async (req: Request, res: Response) => {
 
     // Активируем подписку
     const telegramId = parseInt(payment.telegram_id);
-    activateSubscription(telegramId, 30);
+    activateSubscription(telegramId, SUBSCRIPTION_DAYS);
 
     // Отправляем уведомление пользователю
     try {
       await bot.telegram.sendMessage(
         telegramId,
-        "✅ Подписка активирована на 30 дней"
+        `✅ Подписка активирована на ${SUBSCRIPTION_DAYS} дней`
       );
     } catch (err) {
       console.error("Ошибка отправки уведомления:", err);

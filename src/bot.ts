@@ -11,7 +11,7 @@ import db from "./db/init";
 import { getUserByTelegramId, createUserIfNotExists, updateUser, getAllUsers, User } from "./db/userRepository";
 import { migrateUsersFromJson } from "./db/migrate";
 import { hasActiveSubscription } from "./db/subscriptionRepository";
-import { createPayment } from "./services/robokassa";
+import { createPayment, SUBSCRIPTION_PRICE, SUBSCRIPTION_DAYS } from "./services/robokassa";
 
 // Инициализация БД и миграция данных
 migrateUsersFromJson();
@@ -132,8 +132,8 @@ async function showPaymentMessage(ctx: any): Promise<void> {
   // RoboKassa: редирект на внешний URL
   await ctx.replyWithHTML(
     "🔒 <b>Эта функция доступна по подписке</b>\n\n" +
-    "Подписка на 30 дней — <b>50 ₽</b>\n\n" +
-    "Доступ к прогнозам на неделю и матрице судьбы.",
+    `Подписка на ${SUBSCRIPTION_DAYS} дней — <b>${SUBSCRIPTION_PRICE} ₽</b>\n\n` +
+    "Полный доступ ко всем функциям бота.",
     Markup.inlineKeyboard([
       [Markup.button.url("💳 Оплатить", payment.paymentUrl!)]
     ])
@@ -141,12 +141,12 @@ async function showPaymentMessage(ctx: any): Promise<void> {
   
   // Для Telegram Payments будет:
   // await ctx.replyWithInvoice({
-  //   title: "Подписка на 30 дней",
-  //   description: "Доступ к прогнозам на неделю и матрице судьбы",
+  //   title: `Подписка на ${SUBSCRIPTION_DAYS} дней`,
+  //   description: "Полный доступ ко всем функциям бота",
   //   payload: String(payment.invoiceId),
   //   provider_token: "...", // из env
   //   currency: "RUB",
-  //   prices: [{ label: "Подписка", amount: 5000 }] // копейки
+  //   prices: [{ label: "Подписка", amount: SUBSCRIPTION_PRICE * 100 }] // в копейках
   // });
 }
 
