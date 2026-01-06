@@ -158,6 +158,37 @@ export const bot = new Telegraf(process.env.BOT_TOKEN!);
 bot.use(session());
 
 // ============================================
+// ГЛОБАЛЬНАЯ ЗАЩИТА ОТ КРАШЕЙ
+// ============================================
+bot.catch((err, ctx) => {
+  console.error('❌ Telegraf error:', err);
+  console.error('   Update:', ctx.update?.update_id);
+  console.error('   User:', ctx.from?.id);
+  
+  // Пытаемся ответить пользователю, если это возможно
+  if (ctx.message || ctx.callbackQuery) {
+    try {
+      if (ctx.callbackQuery) {
+        ctx.answerCbQuery().catch(() => {});
+      }
+      ctx.reply("Произошла ошибка, попробуй ещё раз").catch(() => {});
+    } catch (e) {
+      // Игнорируем ошибки при отправке сообщения об ошибке
+    }
+  }
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('❌ Unhandled rejection:', reason);
+  console.error('   Promise:', promise);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('❌ Uncaught exception:', err);
+  // НЕ завершаем процесс, чтобы бот продолжал работать
+});
+
+// ============================================
 // ГЛОБАЛЬНОЕ ЛОГИРОВАНИЕ ВСЕХ АПДЕЙТОВ (ДЛЯ ОТЛАДКИ)
 // ============================================
 bot.use((ctx, next) => {
@@ -217,7 +248,16 @@ bot.telegram.setMyCommands([
 ========================= */
 
 
-bot.command("change_sign", (ctx) => sendZodiacSelection(ctx));
+bot.command("change_sign", (ctx) => {
+  try {
+    sendZodiacSelection(ctx);
+  } catch (err: any) {
+    console.error('❌ Error in /change_sign:', err);
+    try {
+      ctx.reply("Произошла ошибка, попробуй ещё раз").catch(() => {});
+    } catch (e) {}
+  }
+});
 
 function sendZodiacSelection(ctx: any) {
   const rows: any[] = zodiacList.map((z) => [
@@ -233,7 +273,10 @@ bot.action(/zodiac_(.+)/, async (ctx) => {
   try {
     const signRu = ctx.match[1].replace(/_/g, " ");
     const signEn = zodiacMap[signRu];
-    if (!signEn) return ctx.answerCbQuery("Не смог распознать знак", { show_alert: true });
+    if (!signEn) {
+      await ctx.answerCbQuery("Не смог распознать знак", { show_alert: true });
+      return;
+    }
 
     const telegramId = ctx.from!.id;
     
@@ -290,9 +333,14 @@ bot.action(/zodiac_(.+)/, async (ctx) => {
     );
 
     showTimezoneRegions(ctx);
-  } catch (e) {
-    console.error(e);
-    ctx.reply("⚠️ Ошибка при выборе. Попробуй ещё раз.");
+  } catch (err: any) {
+    console.error('❌ Error in zodiac action:', err);
+    try {
+      await ctx.answerCbQuery();
+    } catch (e) {}
+    try {
+      await ctx.reply("Произошла ошибка, попробуй ещё раз");
+    } catch (e) {}
   }
 });
 
@@ -342,6 +390,7 @@ function showTimezoneRegions(ctx: any) {
 }
 
 bot.action(/tz_region_(.+)/, async (ctx) => {
+  try {
   const region = ctx.match[1];
   const list =
     timezoneRegions[`🇷🇺 ${region}`] ||
@@ -349,7 +398,10 @@ bot.action(/tz_region_(.+)/, async (ctx) => {
     timezoneRegions[`🌏 ${region}`] ||
     timezoneRegions[`🌎 ${region}`];
 
-  if (!list) return ctx.answerCbQuery("Не нашёл города", { show_alert: true });
+    if (!list) {
+      await ctx.answerCbQuery("Не нашёл города", { show_alert: true });
+      return;
+    }
 
   const buttons = list.map((tz: TzItem) => [Markup.button.callback(tz.name, `tz_select_${tz.id}`)]);
   buttons.push([Markup.button.callback("⬅️ Назад", "tz_back")]);
@@ -359,18 +411,42 @@ bot.action(/tz_region_(.+)/, async (ctx) => {
     parse_mode: "HTML",
     ...Markup.inlineKeyboard(buttons),
   });
+  } catch (err: any) {
+    console.error('❌ Error in tz_region action:', err);
+    try {
+      await ctx.answerCbQuery();
+    } catch (e) {}
+    try {
+      await ctx.reply("Произошла ошибка, попробуй ещё раз");
+    } catch (e) {}
+  }
 });
 
-bot.action("tz_back", (ctx) => {
-  ctx.answerCbQuery();
+bot.action("tz_back", async (ctx) => {
+  try {
+    await ctx.answerCbQuery();
   showTimezoneRegions(ctx);
+  } catch (err: any) {
+    console.error('❌ Error in tz_back action:', err);
+    try {
+      await ctx.answerCbQuery();
+    } catch (e) {}
+    try {
+      await ctx.reply("Произошла ошибка, попробуй ещё раз");
+    } catch (e) {}
+  }
 });
 
 bot.action(/tz_select_(.+)/, async (ctx) => {
+  try {
   const tz = ctx.match[1];
   const uid = ctx.from!.id;
   let user = getUserByTelegramId(uid);
-  if (!user) return ctx.reply("Сначала выбери знак через /start 🔮");
+    if (!user) {
+      await ctx.answerCbQuery();
+      await ctx.reply("Сначала выбери знак через /start 🔮");
+      return;
+    }
   updateUser(uid, { timezone: tz });
   user = ensureUserDefaults(getUserByTelegramId(uid)!);
 
@@ -381,6 +457,15 @@ bot.action(/tz_select_(.+)/, async (ctx) => {
     `✅ Часовой пояс установлен: <b>${escapeHTML(tz)}</b>\n🕐 Сейчас: <b>${escapeHTML(timeNow)}</b>`,
     mainMenu
   );
+  } catch (err: any) {
+    console.error('❌ Error in tz_select action:', err);
+    try {
+      await ctx.answerCbQuery();
+    } catch (e) {}
+    try {
+      await ctx.reply("Произошла ошибка, попробуй ещё раз");
+    } catch (e) {}
+  }
 });
 
 /* =========================
@@ -388,34 +473,200 @@ bot.action(/tz_select_(.+)/, async (ctx) => {
 ========================= */
 
 // Slash-команды
-bot.command("mydaily", async (ctx) => sendDaily(ctx));
-bot.command("myweekly", async (ctx) => sendWeekly(ctx));
-bot.command("compatibility", (ctx) => askCompatibility(ctx));
-bot.command("moon", async (ctx) => sendMoon(ctx));
-bot.command("settings", (ctx) => showSettings(ctx));
-bot.command("task", (ctx) => sendDailyTask(ctx));
-bot.command("tests", (ctx) => showTestsMenu(ctx));
-bot.command("matrix", (ctx) => openMatrix(ctx)); // 🔮 Матрица судьбы
-bot.command("tariffs", (ctx) => {
-  ctx.replyWithHTML(
+bot.command("mydaily", async (ctx) => {
+  try {
+    await sendDaily(ctx);
+  } catch (err: any) {
+    console.error('❌ Error in /mydaily:', err);
+    try {
+      await ctx.reply("Произошла ошибка, попробуй ещё раз");
+    } catch (e) {}
+  }
+});
+
+bot.command("myweekly", async (ctx) => {
+  try {
+    await sendWeekly(ctx);
+  } catch (err: any) {
+    console.error('❌ Error in /myweekly:', err);
+    try {
+      await ctx.reply("Произошла ошибка, попробуй ещё раз");
+    } catch (e) {}
+  }
+});
+
+bot.command("compatibility", (ctx) => {
+  try {
+    askCompatibility(ctx);
+  } catch (err: any) {
+    console.error('❌ Error in /compatibility:', err);
+    try {
+      ctx.reply("Произошла ошибка, попробуй ещё раз").catch(() => {});
+    } catch (e) {}
+  }
+});
+
+bot.command("moon", async (ctx) => {
+  try {
+    await sendMoon(ctx);
+  } catch (err: any) {
+    console.error('❌ Error in /moon:', err);
+    try {
+      await ctx.reply("Произошла ошибка, попробуй ещё раз");
+    } catch (e) {}
+  }
+});
+
+bot.command("settings", (ctx) => {
+  try {
+    showSettings(ctx);
+  } catch (err: any) {
+    console.error('❌ Error in /settings:', err);
+    try {
+      ctx.reply("Произошла ошибка, попробуй ещё раз").catch(() => {});
+    } catch (e) {}
+  }
+});
+
+bot.command("task", (ctx) => {
+  try {
+    sendDailyTask(ctx);
+  } catch (err: any) {
+    console.error('❌ Error in /task:', err);
+    try {
+      ctx.reply("Произошла ошибка, попробуй ещё раз").catch(() => {});
+    } catch (e) {}
+  }
+});
+
+bot.command("tests", (ctx) => {
+  try {
+    showTestsMenu(ctx);
+  } catch (err: any) {
+    console.error('❌ Error in /tests:', err);
+    try {
+      ctx.reply("Произошла ошибка, попробуй ещё раз").catch(() => {});
+    } catch (e) {}
+  }
+});
+
+bot.command("matrix", (ctx) => {
+  try {
+    openMatrix(ctx);
+  } catch (err: any) {
+    console.error('❌ Error in /matrix:', err);
+    try {
+      ctx.reply("Произошла ошибка, попробуй ещё раз").catch(() => {});
+    } catch (e) {}
+  }
+});
+
+bot.command("tariffs", async (ctx) => {
+  try {
+    await ctx.replyWithHTML(
     `💳 <b>Тарифы и оплата</b>\n\n` +
     `Информация о тарифах и способах оплаты:\n\n` +
     `<a href="https://docs.google.com/document/d/1Q53-21nSGnMPqVktqlfyrXHEHr9teB2Q1jyk-SGiQAw/edit?usp=sharing">Открыть документ с тарифами</a>`,
     mainMenu
   );
+  } catch (err: any) {
+    console.error('❌ Error in /tariffs:', err);
+    try {
+      await ctx.reply("Произошла ошибка, попробуй ещё раз");
+    } catch (e) {}
+  }
 });
 
 /* =========================
    Кнопки основного меню (reply keyboard)
 ========================= */
-bot.hears("🌞 Прогноз на сегодня", (ctx) => sendDaily(ctx));
-bot.hears("🪐 Прогноз на неделю", (ctx) => sendWeekly(ctx));
-bot.hears("🌕 Лунный день", (ctx) => sendMoon(ctx));
-bot.hears("💞 Совместимость", (ctx) => askCompatibility(ctx));
-bot.hears("🎯 Задание дня", (ctx) => sendDailyTask(ctx));
-bot.hears("📋 Тесты", (ctx) => showTestsMenu(ctx));
-bot.hears("🔮 Матрица судьбы", (ctx) => openMatrix(ctx));
-bot.hears("⚙️ Настройки", (ctx) => showSettings(ctx));
+bot.hears("🌞 Прогноз на сегодня", async (ctx) => {
+  try {
+    await sendDaily(ctx);
+  } catch (err: any) {
+    console.error('❌ Error in "Прогноз на сегодня":', err);
+    try {
+      await ctx.reply("Произошла ошибка, попробуй ещё раз");
+    } catch (e) {}
+  }
+});
+
+bot.hears("🪐 Прогноз на неделю", async (ctx) => {
+  try {
+    await sendWeekly(ctx);
+  } catch (err: any) {
+    console.error('❌ Error in "Прогноз на неделю":', err);
+    try {
+      await ctx.reply("Произошла ошибка, попробуй ещё раз");
+    } catch (e) {}
+  }
+});
+
+bot.hears("🌕 Лунный день", async (ctx) => {
+  try {
+    await sendMoon(ctx);
+  } catch (err: any) {
+    console.error('❌ Error in "Лунный день":', err);
+    try {
+      await ctx.reply("Произошла ошибка, попробуй ещё раз");
+    } catch (e) {}
+  }
+});
+
+bot.hears("💞 Совместимость", (ctx) => {
+  try {
+    askCompatibility(ctx);
+  } catch (err: any) {
+    console.error('❌ Error in "Совместимость":', err);
+    try {
+      ctx.reply("Произошла ошибка, попробуй ещё раз").catch(() => {});
+    } catch (e) {}
+  }
+});
+
+bot.hears("🎯 Задание дня", (ctx) => {
+  try {
+    sendDailyTask(ctx);
+  } catch (err: any) {
+    console.error('❌ Error in "Задание дня":', err);
+    try {
+      ctx.reply("Произошла ошибка, попробуй ещё раз").catch(() => {});
+    } catch (e) {}
+  }
+});
+
+bot.hears("📋 Тесты", (ctx) => {
+  try {
+    showTestsMenu(ctx);
+  } catch (err: any) {
+    console.error('❌ Error in "Тесты":', err);
+    try {
+      ctx.reply("Произошла ошибка, попробуй ещё раз").catch(() => {});
+    } catch (e) {}
+  }
+});
+
+bot.hears("🔮 Матрица судьбы", (ctx) => {
+  try {
+    openMatrix(ctx);
+  } catch (err: any) {
+    console.error('❌ Error in "Матрица судьбы":', err);
+    try {
+      ctx.reply("Произошла ошибка, попробуй ещё раз").catch(() => {});
+    } catch (e) {}
+  }
+});
+
+bot.hears("⚙️ Настройки", (ctx) => {
+  try {
+    showSettings(ctx);
+  } catch (err: any) {
+    console.error('❌ Error in "Настройки":', err);
+    try {
+      ctx.reply("Произошла ошибка, попробуй ещё раз").catch(() => {});
+    } catch (e) {}
+  }
+});
 
 // Обработчик выбора знака зодиака через reply keyboard (для старых сообщений)
 // ВРЕМЕННО: ЗАКОММЕНТИРОВАН ДЛЯ ОТЛАДКИ, чтобы не перехватывать клики по кнопкам главного меню
@@ -539,39 +790,115 @@ function showMatrixSections(ctx: any, u: any) {
 }
 
 bot.action("matrix_general", async (ctx) => {
+  try {
   await ctx.answerCbQuery();
   await sendMatrixSection(ctx, "general");
-});
-bot.action("matrix_relations", async (ctx) => {
-  await ctx.answerCbQuery();
-  await sendMatrixSection(ctx, "relations");
-});
-bot.action("matrix_money", async (ctx) => {
-  await ctx.answerCbQuery();
-  await sendMatrixSection(ctx, "money");
-});
-bot.action("matrix_purpose", async (ctx) => {
-  await ctx.answerCbQuery();
-  await sendMatrixSection(ctx, "purpose");
-});
-bot.action("matrix_weak", async (ctx) => {
-  await ctx.answerCbQuery();
-  await sendMatrixSection(ctx, "weak");
-});
-bot.action("matrix_reco", async (ctx) => {
-  await ctx.answerCbQuery();
-  await sendMatrixSection(ctx, "recommendations");
+  } catch (err: any) {
+    console.error('❌ Error in matrix_general action:', err);
+    try {
+      await ctx.answerCbQuery();
+    } catch (e) {}
+    try {
+      await ctx.reply("Произошла ошибка, попробуй ещё раз");
+    } catch (e) {}
+  }
 });
 
-bot.action("matrix_back", (ctx) => {
+bot.action("matrix_relations", async (ctx) => {
+  try {
+  await ctx.answerCbQuery();
+  await sendMatrixSection(ctx, "relations");
+  } catch (err: any) {
+    console.error('❌ Error in matrix_relations action:', err);
+    try {
+      await ctx.answerCbQuery();
+    } catch (e) {}
+    try {
+      await ctx.reply("Произошла ошибка, попробуй ещё раз");
+    } catch (e) {}
+  }
+});
+
+bot.action("matrix_money", async (ctx) => {
+  try {
+  await ctx.answerCbQuery();
+  await sendMatrixSection(ctx, "money");
+  } catch (err: any) {
+    console.error('❌ Error in matrix_money action:', err);
+    try {
+      await ctx.answerCbQuery();
+    } catch (e) {}
+    try {
+      await ctx.reply("Произошла ошибка, попробуй ещё раз");
+    } catch (e) {}
+  }
+});
+
+bot.action("matrix_purpose", async (ctx) => {
+  try {
+  await ctx.answerCbQuery();
+  await sendMatrixSection(ctx, "purpose");
+  } catch (err: any) {
+    console.error('❌ Error in matrix_purpose action:', err);
+    try {
+      await ctx.answerCbQuery();
+    } catch (e) {}
+    try {
+      await ctx.reply("Произошла ошибка, попробуй ещё раз");
+    } catch (e) {}
+  }
+});
+
+bot.action("matrix_weak", async (ctx) => {
+  try {
+  await ctx.answerCbQuery();
+  await sendMatrixSection(ctx, "weak");
+  } catch (err: any) {
+    console.error('❌ Error in matrix_weak action:', err);
+    try {
+      await ctx.answerCbQuery();
+    } catch (e) {}
+    try {
+      await ctx.reply("Произошла ошибка, попробуй ещё раз");
+    } catch (e) {}
+  }
+});
+
+bot.action("matrix_reco", async (ctx) => {
+  try {
+  await ctx.answerCbQuery();
+  await sendMatrixSection(ctx, "recommendations");
+  } catch (err: any) {
+    console.error('❌ Error in matrix_reco action:', err);
+    try {
+      await ctx.answerCbQuery();
+    } catch (e) {}
+    try {
+      await ctx.reply("Произошла ошибка, попробуй ещё раз");
+    } catch (e) {}
+  }
+});
+
+bot.action("matrix_back", async (ctx) => {
+  try {
   const u = getUserByTelegramId(ctx.from!.id);
   if (!u) {
-    ctx.answerCbQuery();
-    return ctx.reply("Сначала выбери знак через /start 🔮");
+      await ctx.answerCbQuery();
+      await ctx.reply("Сначала выбери знак через /start 🔮");
+      return;
   }
   ensureUserDefaults(u);
-  ctx.answerCbQuery();
+    await ctx.answerCbQuery();
   showMatrixSections(ctx, getUserByTelegramId(ctx.from!.id)!);
+  } catch (err: any) {
+    console.error('❌ Error in matrix_back action:', err);
+    try {
+      await ctx.answerCbQuery();
+    } catch (e) {}
+    try {
+      await ctx.reply("Произошла ошибка, попробуй ещё раз");
+    } catch (e) {}
+  }
 });
 
 async function sendMatrixSection(ctx: any, section: string) {
@@ -684,10 +1011,15 @@ function askCompatibility(ctx: any) {
 }
 
 bot.action(/compat_(.+)/, async (ctx) => {
+  try {
   const partnerRu = ctx.match[1].replace(/_/g, " ");
   const u = getUserByTelegramId(ctx.from!.id);
 
-  if (!u?.sign) return sendZodiacSelection(ctx);
+    if (!u?.sign) {
+      await ctx.answerCbQuery();
+      sendZodiacSelection(ctx);
+      return;
+    }
 
   const sign1 = zodiacMap[u.sign];
   const sign2 = zodiacMap[partnerRu];
@@ -699,10 +1031,20 @@ bot.action(/compat_(.+)/, async (ctx) => {
 
   const text = match ? match.text : "Информация о совместимости не найдена 😅";
 
+    await ctx.answerCbQuery();
   await ctx.replyWithHTML(
     `💞 <b>Совместимость ${escapeHTML(u.sign)} + ${escapeHTML(partnerRu)}:</b>\n\n${escapeHTML(text)}`,
     mainMenu
   );
+  } catch (err: any) {
+    console.error('❌ Error in compat action:', err);
+    try {
+      await ctx.answerCbQuery();
+    } catch (e) {}
+    try {
+      await ctx.reply("Произошла ошибка, попробуй ещё раз");
+    } catch (e) {}
+  }
 });
 
 /* =========================
@@ -793,14 +1135,25 @@ function showSettings(ctx: any) {
   );
 }
 
-bot.action("settings_tz", (ctx) => {
-  ctx.answerCbQuery();
+bot.action("settings_tz", async (ctx) => {
+  try {
+    await ctx.answerCbQuery();
   showTimezoneRegions(ctx);
+  } catch (err: any) {
+    console.error('❌ Error in settings_tz action:', err);
+    try {
+      await ctx.answerCbQuery();
+    } catch (e) {}
+    try {
+      await ctx.reply("Произошла ошибка, попробуй ещё раз");
+    } catch (e) {}
+  }
 });
 
-bot.action("settings_daily", (ctx) => {
-  ctx.answerCbQuery();
-  ctx.replyWithHTML(
+bot.action("settings_daily", async (ctx) => {
+  try {
+    await ctx.answerCbQuery();
+    await ctx.replyWithHTML(
     "⏰ <b>Выбери время ежедневного уведомления</b>",
     Markup.inlineKeyboard([
       [Markup.button.callback("07:00", "daily_7"), Markup.button.callback("09:00", "daily_9")],
@@ -808,23 +1161,47 @@ bot.action("settings_daily", (ctx) => {
       [Markup.button.callback("⬅️ Назад", "settings_back")],
     ])
   );
+  } catch (err: any) {
+    console.error('❌ Error in settings_daily action:', err);
+    try {
+      await ctx.answerCbQuery();
+    } catch (e) {}
+    try {
+      await ctx.reply("Произошла ошибка, попробуй ещё раз");
+    } catch (e) {}
+  }
 });
 
-bot.action(/daily_(\d+)/, (ctx) => {
+bot.action(/daily_(\d+)/, async (ctx) => {
+  try {
   const hour = Number(ctx.match[1]);
   const u = getUserByTelegramId(ctx.from!.id);
-  if (!u?.sign) return sendZodiacSelection(ctx);
+    if (!u?.sign) {
+      await ctx.answerCbQuery();
+      sendZodiacSelection(ctx);
+      return;
+    }
   ensureUserDefaults(u);
 
   updateUser(ctx.from!.id, { dailyHour: hour });
 
-  ctx.answerCbQuery();
-  ctx.replyWithHTML(`✅ Установлено: <b>${hour}:00</b>`, mainMenu);
+    await ctx.answerCbQuery();
+    await ctx.replyWithHTML(`✅ Установлено: <b>${hour}:00</b>`, mainMenu);
+  } catch (err: any) {
+    console.error('❌ Error in daily action:', err);
+    try {
+      await ctx.answerCbQuery();
+    } catch (e) {}
+    try {
+      await ctx.reply("Произошла ошибка, попробуй ещё раз");
+    } catch (e) {}
+  }
 });
 
-bot.action("settings_weekly", (ctx) => {
-  ctx.answerCbQuery();
-  ctx.replyWithHTML(
+bot.action("settings_weekly", async (ctx) => {
+  try {
+    await ctx.answerCbQuery();
+    await ctx.replyWithHTML(
     "🗓 <b>Выбери день и время еженедельного уведомления</b>",
     Markup.inlineKeyboard([
       [Markup.button.callback("Вс 21:00", "weekly_0_21"), Markup.button.callback("Пн 09:00", "weekly_1_9")],
@@ -832,13 +1209,27 @@ bot.action("settings_weekly", (ctx) => {
       [Markup.button.callback("⬅️ Назад", "settings_back")],
     ])
   );
+  } catch (err: any) {
+    console.error('❌ Error in settings_weekly action:', err);
+    try {
+      await ctx.answerCbQuery();
+    } catch (e) {}
+    try {
+      await ctx.reply("Произошла ошибка, попробуй ещё раз");
+    } catch (e) {}
+  }
 });
 
 bot.action("settings_birthdate", async (ctx) => {
+  try {
   const uid = ctx.from!.id;
   const u = getUserByTelegramId(uid);
 
-  if (!u) return ctx.reply("Сначала выбери знак 🌟", mainMenu);
+    if (!u) {
+      await ctx.answerCbQuery();
+      await ctx.reply("Сначала выбери знак 🌟", mainMenu);
+      return;
+    }
 
   ensureUserDefaults(u);
 
@@ -851,26 +1242,59 @@ bot.action("settings_birthdate", async (ctx) => {
     "Например: <code>19.10.1989</code>",
     { parse_mode: "HTML" }
   );
+  } catch (err: any) {
+    console.error('❌ Error in settings_birthdate action:', err);
+    try {
+      await ctx.answerCbQuery();
+    } catch (e) {}
+    try {
+      await ctx.reply("Произошла ошибка, попробуй ещё раз");
+    } catch (e) {}
+  }
 });
 
-bot.action(/weekly_(\d+)_(\d+)/, (ctx) => {
+bot.action(/weekly_(\d+)_(\d+)/, async (ctx) => {
+  try {
   const dow = Number(ctx.match[1]);
   const hour = Number(ctx.match[2]);
 
   const u = getUserByTelegramId(ctx.from!.id);
-  if (!u?.sign) return sendZodiacSelection(ctx);
+    if (!u?.sign) {
+      await ctx.answerCbQuery();
+      sendZodiacSelection(ctx);
+      return;
+    }
 
   ensureUserDefaults(u);
 
   updateUser(ctx.from!.id, { weeklyDow: dow, weeklyHour: hour });
 
-  ctx.answerCbQuery();
-  ctx.replyWithHTML(`✅ Установлено: <b>${dow}</b> день, <b>${hour}:00</b>`, mainMenu);
+    await ctx.answerCbQuery();
+    await ctx.replyWithHTML(`✅ Установлено: <b>${dow}</b> день, <b>${hour}:00</b>`, mainMenu);
+  } catch (err: any) {
+    console.error('❌ Error in weekly action:', err);
+    try {
+      await ctx.answerCbQuery();
+    } catch (e) {}
+    try {
+      await ctx.reply("Произошла ошибка, попробуй ещё раз");
+    } catch (e) {}
+  }
 });
 
-bot.action("settings_back", (ctx) => {
-  ctx.answerCbQuery();
+bot.action("settings_back", async (ctx) => {
+  try {
+    await ctx.answerCbQuery();
   showSettings(ctx);
+  } catch (err: any) {
+    console.error('❌ Error in settings_back action:', err);
+    try {
+      await ctx.answerCbQuery();
+    } catch (e) {}
+    try {
+      await ctx.reply("Произошла ошибка, попробуй ещё раз");
+    } catch (e) {}
+  }
 });
 
 /* =========================
@@ -921,133 +1345,187 @@ function showTestsMenu(ctx: any) {
   );
 }
 
-bot.action("tests_home", (ctx) => {
-  ctx.answerCbQuery();
-  ctx.reply("Главное меню:", mainMenu);
+bot.action("tests_home", async (ctx) => {
+  try {
+    await ctx.answerCbQuery();
+    await ctx.reply("Главное меню:", mainMenu);
+  } catch (err: any) {
+    console.error('❌ Error in tests_home action:', err);
+    try {
+      await ctx.answerCbQuery();
+    } catch (e) {}
+    try {
+      await ctx.reply("Произошла ошибка, попробуй ещё раз");
+    } catch (e) {}
+  }
 });
 
-bot.action("tests_menu", (ctx) => {
-  ctx.answerCbQuery();
-  showTestsMenu(ctx);
+bot.action("tests_menu", async (ctx) => {
+  try {
+    await ctx.answerCbQuery();
+    showTestsMenu(ctx);
+  } catch (err: any) {
+    console.error('❌ Error in tests_menu action:', err);
+    try {
+      await ctx.answerCbQuery();
+    } catch (e) {}
+    try {
+      await ctx.reply("Произошла ошибка, попробуй ещё раз");
+    } catch (e) {}
+  }
 });
 
 bot.action(/test_open_(.+)/, async (ctx) => {
-  const id = ctx.match[1];
-  const test = loadTestById(id);
+  try {
+    const id = ctx.match[1];
+    const test = loadTestById(id);
 
-  if (!test || !Array.isArray(test.questions) || test.questions.length === 0) {
+    if (!test || !Array.isArray(test.questions) || test.questions.length === 0) {
+      await ctx.answerCbQuery();
+      await ctx.reply("Не удалось загрузить тест.");
+      return;
+    }
+
+    const total = test.meta?.questions || test.questions.length;
+
+    const intro =
+      `<b>${escapeHTML(test.title)}</b>\n\n` +
+      `${escapeHTML(test.description || "")}\n\n` +
+      `🧭 <b>${total} вопросов</b>\n` +
+      `Отвечай честно — нет правильных ответов.`;
+
     await ctx.answerCbQuery();
-    return ctx.reply("Не удалось загрузить тест.");
+    await ctx.replyWithHTML(intro, Markup.inlineKeyboard([
+      [Markup.button.callback("▶️ Начать", `test_start_${id}`)],
+      [Markup.button.callback("📋 Назад", "tests_menu")],
+      [Markup.button.callback("🏠 Меню", "tests_home")]
+    ]));
+  } catch (err: any) {
+    console.error('❌ Error in test_open action:', err);
+    try {
+      await ctx.answerCbQuery();
+    } catch (e) {}
+    try {
+      await ctx.reply("Произошла ошибка, попробуй ещё раз");
+    } catch (e) {}
   }
-
-  const total = test.meta?.questions || test.questions.length;
-
-  const intro =
-    `<b>${escapeHTML(test.title)}</b>\n\n` +
-    `${escapeHTML(test.description || "")}\n\n` +
-    `🧭 <b>${total} вопросов</b>\n` +
-    `Отвечай честно — нет правильных ответов.`;
-
-  await ctx.answerCbQuery();
-  await ctx.replyWithHTML(intro, Markup.inlineKeyboard([
-    [Markup.button.callback("▶️ Начать", `test_start_${id}`)],
-    [Markup.button.callback("📋 Назад", "tests_menu")],
-    [Markup.button.callback("🏠 Меню", "tests_home")]
-  ]));
 });
 
 bot.action(/test_start_(.+)/, async (ctx) => {
-  const id = ctx.match[1];
-  const uid = ctx.from!.id;
+  try {
+    const id = ctx.match[1];
+    const uid = ctx.from!.id;
 
-  let u = getUserByTelegramId(uid);
-  if (!u || !u.sign) {
-    return sendZodiacSelection(ctx);
-  }
-  ensureUserDefaults(u);
+    let u = getUserByTelegramId(uid);
+    if (!u || !u.sign) {
+      await ctx.answerCbQuery();
+      sendZodiacSelection(ctx);
+      return;
+    }
+    ensureUserDefaults(u);
 
-  const test = loadTestById(id);
-  if (!test || !Array.isArray(test.questions)) {
-    await ctx.answerCbQuery();
-    return ctx.reply("Ошибка загрузки теста.");
-  }
-
-  updateUser(uid, {
-    currentTestId: id,
-    currentQuestionIndex: 0,
-    currentTestScore: 0
-  });
-  u = getUserByTelegramId(uid)!;
-
-  await ctx.answerCbQuery();
-  await sendTestQuestion(ctx, u, test);
-});
-
-bot.action(/answer_(\d+)_(\d+)/, async (ctx) => {
-  const qIndex = Number(ctx.match[1]);
-  const answerNum = Number(ctx.match[2]);
-  const uid = ctx.from!.id;
-
-  let u = getUserByTelegramId(uid);
-  if (!u || !u.currentTestId) {
-    await ctx.answerCbQuery("Тест не найден", { show_alert: true });
-    return;
-  }
-  ensureUserDefaults(u);
-
-  const test = loadTestById(u.currentTestId);
-  if (!test) {
-    await ctx.answerCbQuery("Ошибка теста", { show_alert: true });
-    return;
-  }
-
-  if (qIndex !== u.currentQuestionIndex) {
-    await ctx.answerCbQuery();
-    return;
-  }
-
-  const q = test.questions[qIndex];
-  const scores: number[] = q.scores || [];
-  const score = scores[answerNum - 1] || 0;
-
-  const currentScore = u.currentTestScore ?? 0;
-  const currentQuestionIndex = u.currentQuestionIndex ?? 0;
-  const newScore = currentScore + score;
-  const newQuestionIndex = currentQuestionIndex + 1;
-  updateUser(uid, {
-    currentTestScore: newScore,
-    currentQuestionIndex: newQuestionIndex
-  });
-  u = getUserByTelegramId(uid)!;
-
-  await ctx.answerCbQuery();
-
-  const updatedQuestionIndex = u.currentQuestionIndex ?? 0;
-  if (updatedQuestionIndex >= test.questions.length) {
-    const totalScore = u.currentTestScore ?? 0;
-    const result = getTestResult(test, totalScore);
+    const test = loadTestById(id);
+    if (!test || !Array.isArray(test.questions)) {
+      await ctx.answerCbQuery();
+      await ctx.reply("Ошибка загрузки теста.");
+      return;
+    }
 
     updateUser(uid, {
-      currentTestId: null,
+      currentTestId: id,
       currentQuestionIndex: 0,
       currentTestScore: 0
     });
+    u = getUserByTelegramId(uid)!;
 
-    let msg =
-      `🧾 <b>${escapeHTML(test.title)}</b>\n\n` +
-      `Твой результат: <b>${escapeHTML(result.title)}</b>\n\n` +
-      `${escapeHTML(result.text || "")}`;
+    await ctx.answerCbQuery();
+    await sendTestQuestion(ctx, u, test);
+  } catch (err: any) {
+    console.error('❌ Error in test_start action:', err);
+    try {
+      await ctx.answerCbQuery();
+    } catch (e) {}
+    try {
+      await ctx.reply("Произошла ошибка, попробуй ещё раз");
+    } catch (e) {}
+  }
+});
 
-    if (result.advice) {
-      msg += `\n\n💡 Рекомендация:\n${escapeHTML(result.advice)}`;
+bot.action(/answer_(\d+)_(\d+)/, async (ctx) => {
+  try {
+    const qIndex = Number(ctx.match[1]);
+    const answerNum = Number(ctx.match[2]);
+    const uid = ctx.from!.id;
+
+    let u = getUserByTelegramId(uid);
+    if (!u || !u.currentTestId) {
+      await ctx.answerCbQuery("Тест не найден", { show_alert: true });
+      return;
+    }
+    ensureUserDefaults(u);
+
+    const test = loadTestById(u.currentTestId);
+    if (!test) {
+      await ctx.answerCbQuery("Ошибка теста", { show_alert: true });
+      return;
     }
 
-    await ctx.replyWithHTML(msg, Markup.inlineKeyboard([
-      [Markup.button.callback("📋 Тесты", "tests_menu")],
-      [Markup.button.callback("🏠 Меню", "tests_home")]
-    ]));
-  } else {
-    await sendTestQuestion(ctx, u, test);
+    if (qIndex !== u.currentQuestionIndex) {
+      await ctx.answerCbQuery();
+      return;
+    }
+
+    const q = test.questions[qIndex];
+    const scores: number[] = q.scores || [];
+    const score = scores[answerNum - 1] || 0;
+
+    const currentScore = u.currentTestScore ?? 0;
+    const currentQuestionIndex = u.currentQuestionIndex ?? 0;
+    const newScore = currentScore + score;
+    const newQuestionIndex = currentQuestionIndex + 1;
+    updateUser(uid, {
+      currentTestScore: newScore,
+      currentQuestionIndex: newQuestionIndex
+    });
+    u = getUserByTelegramId(uid)!;
+
+    await ctx.answerCbQuery();
+
+    const updatedQuestionIndex = u.currentQuestionIndex ?? 0;
+    if (updatedQuestionIndex >= test.questions.length) {
+      const totalScore = u.currentTestScore ?? 0;
+      const result = getTestResult(test, totalScore);
+
+      updateUser(uid, {
+        currentTestId: null,
+        currentQuestionIndex: 0,
+        currentTestScore: 0
+      });
+
+      let msg =
+        `🧾 <b>${escapeHTML(test.title)}</b>\n\n` +
+        `Твой результат: <b>${escapeHTML(result.title)}</b>\n\n` +
+        `${escapeHTML(result.text || "")}`;
+
+      if (result.advice) {
+        msg += `\n\n💡 Рекомендация:\n${escapeHTML(result.advice)}`;
+      }
+
+      await ctx.replyWithHTML(msg, Markup.inlineKeyboard([
+        [Markup.button.callback("📋 Тесты", "tests_menu")],
+        [Markup.button.callback("🏠 Меню", "tests_home")]
+      ]));
+    } else {
+      await sendTestQuestion(ctx, u, test);
+    }
+  } catch (err: any) {
+    console.error('❌ Error in answer action:', err);
+    try {
+      await ctx.answerCbQuery();
+    } catch (e) {}
+    try {
+      await ctx.reply("Произошла ошибка, попробуй ещё раз");
+    } catch (e) {}
   }
 });
 
@@ -1179,47 +1657,66 @@ function calculateMatrixArcans(parsed: { date: Date | undefined }): MatrixArcans
    ВАЖНО: Этот обработчик НЕ должен перехватывать reply-кнопки меню
 ========================= */
 bot.on("text", async (ctx, next) => {
-  const uid = ctx.from?.id;
-  if (!uid) return next();
+  try {
+    const uid = ctx.from?.id;
+    if (!uid) return next();
 
-  const u = getUserByTelegramId(uid);
+    const u = getUserByTelegramId(uid);
 
-  // Если НЕ ждём дату рождения — пропускаем дальше (к fallback или другим обработчикам)
-  if (!u || !u.awaitingBirthDate) {
-    return next();
+    // Если НЕ ждём дату рождения — пропускаем дальше (к fallback или другим обработчикам)
+    if (!u || !u.awaitingBirthDate) {
+      return next();
+    }
+
+    // Обрабатываем ввод даты рождения только если awaitingBirthDate = true
+    const raw = (ctx.message as any).text.trim();
+    const parsed = parseBirthDate(raw);
+
+    if (!parsed.ok) {
+      try {
+        await ctx.reply(
+          "Я не понял дату 😅\n" +
+          "Введи формат <b>ДД.ММ.ГГГГ</b>.\n" +
+          "Например: 05.03.1992",
+          { parse_mode: "HTML" }
+        );
+      } catch (e) {
+        console.error('❌ Error sending date format message:', e);
+      }
+      return;
+    }
+
+    // Сохраняем и считаем
+    const arcans = calculateMatrixArcans({ date: parsed.date });
+    updateUser(uid, {
+      birthDate: parsed.display,
+      arcans: arcans,
+      awaitingBirthDate: false
+    });
+    const updatedUser = getUserByTelegramId(uid)!;
+
+    try {
+      await ctx.replyWithHTML(
+        `✅ Дата рождения сохранена: <b>${escapeHTML(updatedUser.birthDate!)}</b>\n` +
+        `Матрица рассчитана.\n\n` +
+        `Теперь выбери раздел 👇`,
+        mainMenu
+      );
+    } catch (e) {
+      console.error('❌ Error sending birthdate confirmation:', e);
+    }
+
+    try {
+      showMatrixSections(ctx, updatedUser);
+    } catch (e) {
+      console.error('❌ Error showing matrix sections:', e);
+    }
+  } catch (err: any) {
+    console.error('❌ Error in birthdate text handler:', err);
+    try {
+      await ctx.reply("Произошла ошибка, попробуй ещё раз");
+    } catch (e) {}
   }
-
-  // Обрабатываем ввод даты рождения только если awaitingBirthDate = true
-  const raw = (ctx.message as any).text.trim();
-  const parsed = parseBirthDate(raw);
-
-  if (!parsed.ok) {
-    await ctx.reply(
-      "Я не понял дату 😅\n" +
-      "Введи формат <b>ДД.ММ.ГГГГ</b>.\n" +
-      "Например: 05.03.1992",
-      { parse_mode: "HTML" }
-    );
-    return;
-  }
-
-  // Сохраняем и считаем
-  const arcans = calculateMatrixArcans({ date: parsed.date });
-  updateUser(uid, {
-    birthDate: parsed.display,
-    arcans: arcans,
-    awaitingBirthDate: false
-  });
-  const updatedUser = getUserByTelegramId(uid)!;
-
-  await ctx.replyWithHTML(
-    `✅ Дата рождения сохранена: <b>${escapeHTML(updatedUser.birthDate!)}</b>\n` +
-    `Матрица рассчитана.\n\n` +
-    `Теперь выбери раздел 👇`,
-    mainMenu
-  );
-
-  showMatrixSections(ctx, updatedUser);
 });
 
 /* =========================
@@ -1227,22 +1724,27 @@ bot.on("text", async (ctx, next) => {
    ВАЖНО: Должен быть в самом конце, после всех специфичных обработчиков
 ========================= */
 bot.on("text", async (ctx) => {
-  // Игнорируем команды (они обрабатываются bot.command)
-  if ((ctx.message as any).text?.startsWith("/")) {
-    return;
-  }
-  
-  // Игнорируем, если ожидаем дату рождения (это обрабатывается выше)
-  const uid = ctx.from?.id;
-  if (uid) {
-    const u = getUserByTelegramId(uid);
-    if (u?.awaitingBirthDate) {
-      return; // Уже обработано выше
+  try {
+    // Игнорируем команды (они обрабатываются bot.command)
+    if ((ctx.message as any).text?.startsWith("/")) {
+      return;
     }
+    
+    // Игнорируем, если ожидаем дату рождения (это обрабатывается выше)
+    const uid = ctx.from?.id;
+    if (uid) {
+      const u = getUserByTelegramId(uid);
+      if (u?.awaitingBirthDate) {
+        return; // Уже обработано выше
+      }
+    }
+    
+    // Для всех остальных текстовых сообщений показываем подсказку
+    await ctx.reply("Выбери раздел из меню 👇", mainMenu);
+  } catch (err: any) {
+    console.error('❌ Error in fallback text handler:', err);
+    // Не отвечаем пользователю, чтобы не создавать цикл ошибок
   }
-  
-  // Для всех остальных текстовых сообщений показываем подсказку
-  await ctx.reply("Выбери раздел из меню 👇", mainMenu);
 });
 
 /* =========================
@@ -1514,69 +2016,96 @@ const zodiacFirstMenu = Markup.keyboard([
  * ВАЖНО: telegram_id - единственный идентификатор пользователя, БД - единственный источник истины.
  */
 bot.start(async (ctx) => {
-  const telegramId = ctx.from!.id;
-  
-  // ВАЖНО: Всегда получаем пользователя из БД, не используем session
-  let user = getUserByTelegramId(telegramId);
-  
-  // Если пользователя нет в БД — создаём его
-  if (!user) {
-    user = createUserIfNotExists(telegramId, {
-      onboardingCompleted: false
-    });
-  }
+  try {
+    const telegramId = ctx.from!.id;
+    
+    // ВАЖНО: Всегда получаем пользователя из БД, не используем session
+    let user = getUserByTelegramId(telegramId);
+    
+    // Если пользователя нет в БД — создаём его
+    if (!user) {
+      user = createUserIfNotExists(telegramId, {
+        onboardingCompleted: false
+      });
+    }
 
-  // Если пользователь уже завершил onboarding и имеет знак — показываем главное меню
-  if (user.onboardingCompleted && user.sign) {
-    await ctx.replyWithHTML(
-      "✨ <b>Добро пожаловать обратно!</b>\n\nВыбери раздел:",
-      mainMenu
-    );
-    return;
-  }
-
-  // Если пользователь существует, но не завершил onboarding
-  if (!user.onboardingCompleted) {
-    // Проверяем, есть ли у пользователя знак (старые пользователи из миграции)
-    if (user.sign) {
-      // У старых пользователей есть знак, но нет флага onboarding — помечаем как завершённый
-      updateUser(telegramId, { onboardingCompleted: true });
-      await ctx.replyWithHTML(
-        "✨ <b>Добро пожаловать обратно!</b>\n\nВыбери раздел:",
-        mainMenu
-      );
+    // Если пользователь уже завершил onboarding и имеет знак — показываем главное меню
+    if (user.onboardingCompleted && user.sign) {
+      try {
+        await ctx.replyWithHTML(
+          "✨ <b>Добро пожаловать обратно!</b>\n\nВыбери раздел:",
+          mainMenu
+        );
+      } catch (e: any) {
+        console.error('❌ Error sending welcome back message:', e);
+      }
       return;
     }
-    // Если знака нет — показываем приветствие
-    await ctx.reply(
-      welcomeText,
-      Markup.inlineKeyboard([
-        [Markup.button.callback("✅ Принять и продолжить", "accept_terms")],
-      ])
-    );
-    return;
-  }
 
-  // Если onboarding завершён, но знака нет (не должно быть, но на всякий случай)
-  if (user.onboardingCompleted && !user.sign) {
-    await ctx.reply("✨ Выбери свой знак Зодиака:", {
-      parse_mode: "HTML",
-      ...Markup.inlineKeyboard(
-        zodiacList.map((z) => [
-          Markup.button.callback(`${z.emoji} ${z.name}`, `zodiac_${z.name.replace(/\s+/g, "_")}`)
+    // Если пользователь существует, но не завершил onboarding
+    if (!user.onboardingCompleted) {
+      // Проверяем, есть ли у пользователя знак (старые пользователи из миграции)
+      if (user.sign) {
+        // У старых пользователей есть знак, но нет флага onboarding — помечаем как завершённый
+        updateUser(telegramId, { onboardingCompleted: true });
+        try {
+          await ctx.replyWithHTML(
+            "✨ <b>Добро пожаловать обратно!</b>\n\nВыбери раздел:",
+            mainMenu
+          );
+        } catch (e: any) {
+          console.error('❌ Error sending welcome back message:', e);
+        }
+        return;
+      }
+      // Если знака нет — показываем приветствие
+      try {
+        await ctx.reply(
+          welcomeText,
+          Markup.inlineKeyboard([
+            [Markup.button.callback("✅ Принять и продолжить", "accept_terms")],
+          ])
+        );
+      } catch (e: any) {
+        console.error('❌ Error sending welcome text:', e);
+      }
+      return;
+    }
+
+    // Если onboarding завершён, но знака нет (не должно быть, но на всякий случай)
+    if (user.onboardingCompleted && !user.sign) {
+      try {
+        await ctx.reply("✨ Выбери свой знак Зодиака:", {
+          parse_mode: "HTML",
+          ...Markup.inlineKeyboard(
+            zodiacList.map((z) => [
+              Markup.button.callback(`${z.emoji} ${z.name}`, `zodiac_${z.name.replace(/\s+/g, "_")}`)
+            ])
+          ),
+        });
+      } catch (e: any) {
+        console.error('❌ Error sending zodiac selection:', e);
+      }
+      return;
+    }
+
+    // Новый пользователь без onboarding — показываем приветствие
+    try {
+      await ctx.reply(
+        welcomeText,
+        Markup.inlineKeyboard([
+          [Markup.button.callback("✅ Принять и продолжить", "accept_terms")],
         ])
-      ),
-    });
-    return;
+      );
+    } catch (e: any) {
+      console.error('❌ Error sending welcome text:', e);
+    }
+  } catch (err: any) {
+    console.error('❌ Error in /start command:', err);
+    try {
+      await ctx.reply("Произошла ошибка, попробуй ещё раз");
+    } catch (e) {}
   }
-
-  // Новый пользователь без onboarding — показываем приветствие
-  await ctx.reply(
-    welcomeText,
-    Markup.inlineKeyboard([
-      [Markup.button.callback("✅ Принять и продолжить", "accept_terms")],
-    ])
-  );
 });
 
 /**
@@ -1584,26 +2113,44 @@ bot.start(async (ctx) => {
  * ВАЖНО: Сохраняем в БД, не используем session
  */
 bot.action("accept_terms", async (ctx) => {
-  const telegramId = ctx.from!.id;
-  
-  // ВАЖНО: Создаём или обновляем пользователя в БД
-  let user = getUserByTelegramId(telegramId);
-  if (!user) {
-    user = createUserIfNotExists(telegramId, {
-      onboardingCompleted: false
-    });
-  } else {
-    // Обновляем существующего пользователя
-    updateUser(telegramId, {
-      onboardingCompleted: false
-    });
+  try {
+    const telegramId = ctx.from!.id;
+    
+    // ВАЖНО: Создаём или обновляем пользователя в БД
+    let user = getUserByTelegramId(telegramId);
+    if (!user) {
+      user = createUserIfNotExists(telegramId, {
+        onboardingCompleted: false
+      });
+    } else {
+      // Обновляем существующего пользователя
+      updateUser(telegramId, {
+        onboardingCompleted: false
+      });
+    }
+
+    await ctx.answerCbQuery();
+    try {
+      await ctx.editMessageText("Отлично, поехали! ✨");
+    } catch (e) {
+      console.error('❌ Error editing message:', e);
+    }
+
+    // Показываем выбор знака через inline keyboard (не reply keyboard)
+    try {
+      sendZodiacSelection(ctx);
+    } catch (e) {
+      console.error('❌ Error showing zodiac selection:', e);
+    }
+  } catch (err: any) {
+    console.error('❌ Error in accept_terms action:', err);
+    try {
+      await ctx.answerCbQuery();
+    } catch (e) {}
+    try {
+      await ctx.reply("Произошла ошибка, попробуй ещё раз");
+    } catch (e) {}
   }
-
-  await ctx.answerCbQuery();
-  await ctx.editMessageText("Отлично, поехали! ✨");
-
-  // Показываем выбор знака через inline keyboard (не reply keyboard)
-  sendZodiacSelection(ctx);
 });
 
 /* =========================
