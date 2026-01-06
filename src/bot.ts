@@ -157,9 +157,33 @@ async function showPaymentMessage(ctx: any): Promise<void> {
 export const bot = new Telegraf(process.env.BOT_TOKEN!);
 bot.use(session());
 
-// Диагностический лог апдейтов
+// ============================================
+// ГЛОБАЛЬНОЕ ЛОГИРОВАНИЕ ВСЕХ АПДЕЙТОВ (ДЛЯ ОТЛАДКИ)
+// ============================================
 bot.use((ctx, next) => {
-  console.log("UPDATE:", ctx.update.update_id);
+  const update = ctx.update;
+  const updateId = update.update_id;
+  
+  // Логируем message.text
+  if ('message' in update && update.message && 'text' in update.message) {
+    console.log(`📨 [UPDATE ${updateId}] MESSAGE.TEXT: "${update.message.text}"`);
+    console.log(`   User: ${ctx.from?.id} (@${ctx.from?.username || 'no-username'})`);
+  }
+  
+  // Логируем callback_query.data
+  if ('callback_query' in update && update.callback_query) {
+    const cb = update.callback_query;
+    if ('data' in cb && cb.data) {
+      console.log(`🔘 [UPDATE ${updateId}] CALLBACK_QUERY.DATA: "${cb.data}"`);
+      console.log(`   User: ${cb.from?.id} (@${cb.from?.username || 'no-username'})`);
+    }
+  }
+  
+  // Логируем другие типы апдейтов
+  if (!('message' in update) && !('callback_query' in update)) {
+    console.log(`📦 [UPDATE ${updateId}] OTHER TYPE:`, Object.keys(update).filter(k => k !== 'update_id').join(', '));
+  }
+  
   return next();
 });
 
@@ -221,28 +245,28 @@ bot.action(/zodiac_(.+)/, async (ctx) => {
         onboardingCompleted: true
       });
     } else {
-      createUserIfNotExists(telegramId, {
-        sign: signRu,
-        dailyIndex: 0,
-        weeklyIndex: 0,
-        timezone: null,
-        dailyHour: 9,
-        weeklyHour: 21,
-        weeklyDow: 0, // вс
-        lastLunarDay: null,
-        lastDailyDate: null,
-        lastDailyText: null,
-        lastWeeklyDate: null,
-        lastWeeklyText: null,
-        dailyTaskIndex: 0,
-        currentTestId: null,
-        currentQuestionIndex: 0,
-        currentTestScore: 0,
-        birthDate: null,
-        arcans: null,
+    createUserIfNotExists(telegramId, {
+      sign: signRu,
+      dailyIndex: 0,
+      weeklyIndex: 0,
+      timezone: null,
+      dailyHour: 9,
+      weeklyHour: 21,
+      weeklyDow: 0, // вс
+      lastLunarDay: null,
+      lastDailyDate: null,
+      lastDailyText: null,
+      lastWeeklyDate: null,
+      lastWeeklyText: null,
+      dailyTaskIndex: 0,
+      currentTestId: null,
+      currentQuestionIndex: 0,
+      currentTestScore: 0,
+      birthDate: null,
+      arcans: null,
         awaitingBirthDate: false,
         onboardingCompleted: true
-      });
+    });
     }
 
     const user = getUserByTelegramId(telegramId)!;
@@ -381,21 +405,90 @@ bot.command("tariffs", (ctx) => {
   );
 });
 
-// Кнопки основного меню
-bot.hears("🌞 Прогноз на сегодня", (ctx) => sendDaily(ctx));
-bot.hears("🪐 Прогноз на неделю", (ctx) => sendWeekly(ctx));
-bot.hears("🌕 Лунный день", (ctx) => sendMoon(ctx));
-bot.hears("💞 Совместимость", (ctx) => askCompatibility(ctx));
-bot.hears("🎯 Задание дня", (ctx) => sendDailyTask(ctx));
-bot.hears("📋 Тесты", (ctx) => showTestsMenu(ctx));
-bot.hears("🔮 Матрица судьбы", (ctx) => openMatrix(ctx));
-bot.hears("⚙️ Настройки", (ctx) => showSettings(ctx));
+// ============================================
+// КНОПКИ ОСНОВНОГО МЕНЮ (С ЛОГИРОВАНИЕМ ДЛЯ ОТЛАДКИ)
+// ============================================
+bot.hears("🌞 Прогноз на сегодня", (ctx) => {
+  console.log("✅ [HEARS] Обработчик сработал: '🌞 Прогноз на сегодня'");
+  console.log(`   Text: "${(ctx.message as any).text}"`);
+  console.log(`   User: ${ctx.from?.id}`);
+  // ВРЕМЕННО: упрощённый ответ для отладки
+  ctx.reply("OK: Прогноз на сегодня");
+  // sendDaily(ctx);
+});
+
+bot.hears("🪐 Прогноз на неделю", (ctx) => {
+  console.log("✅ [HEARS] Обработчик сработал: '🪐 Прогноз на неделю'");
+  console.log(`   Text: "${(ctx.message as any).text}"`);
+  console.log(`   User: ${ctx.from?.id}`);
+  // ВРЕМЕННО: упрощённый ответ для отладки
+  ctx.reply("OK: Прогноз на неделю");
+  // sendWeekly(ctx);
+});
+
+bot.hears("🌕 Лунный день", (ctx) => {
+  console.log("✅ [HEARS] Обработчик сработал: '🌕 Лунный день'");
+  console.log(`   Text: "${(ctx.message as any).text}"`);
+  console.log(`   User: ${ctx.from?.id}`);
+  // ВРЕМЕННО: упрощённый ответ для отладки
+  ctx.reply("OK: Лунный день");
+  // sendMoon(ctx);
+});
+
+bot.hears("💞 Совместимость", (ctx) => {
+  console.log("✅ [HEARS] Обработчик сработал: '💞 Совместимость'");
+  console.log(`   Text: "${(ctx.message as any).text}"`);
+  console.log(`   User: ${ctx.from?.id}`);
+  // ВРЕМЕННО: упрощённый ответ для отладки
+  ctx.reply("OK: Совместимость");
+  // askCompatibility(ctx);
+});
+
+bot.hears("🎯 Задание дня", (ctx) => {
+  console.log("✅ [HEARS] Обработчик сработал: '🎯 Задание дня'");
+  console.log(`   Text: "${(ctx.message as any).text}"`);
+  console.log(`   User: ${ctx.from?.id}`);
+  // ВРЕМЕННО: упрощённый ответ для отладки
+  ctx.reply("OK: Задание дня");
+  // sendDailyTask(ctx);
+});
+
+bot.hears("📋 Тесты", (ctx) => {
+  console.log("✅ [HEARS] Обработчик сработал: '📋 Тесты'");
+  console.log(`   Text: "${(ctx.message as any).text}"`);
+  console.log(`   User: ${ctx.from?.id}`);
+  // ВРЕМЕННО: упрощённый ответ для отладки
+  ctx.reply("OK: Тесты");
+  // showTestsMenu(ctx);
+});
+
+bot.hears("🔮 Матрица судьбы", (ctx) => {
+  console.log("✅ [HEARS] Обработчик сработал: '🔮 Матрица судьбы'");
+  console.log(`   Text: "${(ctx.message as any).text}"`);
+  console.log(`   User: ${ctx.from?.id}`);
+  // ВРЕМЕННО: упрощённый ответ для отладки
+  ctx.reply("OK: Матрица судьбы");
+  // openMatrix(ctx);
+});
+
+bot.hears("⚙️ Настройки", (ctx) => {
+  console.log("✅ [HEARS] Обработчик сработал: '⚙️ Настройки'");
+  console.log(`   Text: "${(ctx.message as any).text}"`);
+  console.log(`   User: ${ctx.from?.id}`);
+  // ВРЕМЕННО: упрощённый ответ для отладки
+  ctx.reply("OK: Настройки");
+  // showSettings(ctx);
+});
 
 // Обработчик выбора знака зодиака через reply keyboard (для старых сообщений)
+// ВРЕМЕННО: ЗАКОММЕНТИРОВАН ДЛЯ ОТЛАДКИ, чтобы не перехватывать клики по кнопкам главного меню
+// Раскомментировать после отладки
+/*
 const zodiacReplyButtons = ["♈ Овен", "♉ Телец", "♊ Близнецы", "♋ Рак", "♌ Лев", "♍ Дева", 
   "♎ Весы", "♏ Скорпион", "♐ Стрелец", "♑ Козерог", "♒ Водолей", "♓ Рыбы"];
 
 bot.hears(zodiacReplyButtons, async (ctx) => {
+  console.log("🔍 [ZODIAC HEARS] Обработчик знака зодиака вызван");
   const text = (ctx.message as any).text;
   // Извлекаем название знака (убираем эмодзи)
   const signRu = text.replace(/^[^\s]+\s+/, "").trim();
@@ -456,6 +549,7 @@ bot.hears(zodiacReplyButtons, async (ctx) => {
   
   showTimezoneRegions(ctx);
 });
+*/
 
 /* =========================
    Матрица судьбы — вход и разделы
@@ -1144,13 +1238,27 @@ function calculateMatrixArcans(parsed: { date: Date | undefined }): MatrixArcans
 ========================= */
 
 bot.on("text", async (ctx, next) => {
+  console.log("🔍 [TEXT HANDLER] Обработчик bot.on('text') вызван");
+  console.log(`   Text: "${(ctx.message as any).text}"`);
+  console.log(`   User: ${ctx.from?.id}`);
+  
   const uid = ctx.from?.id;
-  if (!uid) return next();
+  if (!uid) {
+    console.log("   ⚠️ Нет uid, вызываем next()");
+    return next();
+  }
 
   const u = getUserByTelegramId(uid);
+  console.log(`   User in DB: ${u ? 'exists' : 'not found'}`);
+  console.log(`   awaitingBirthDate: ${u?.awaitingBirthDate || false}`);
 
   // Если НЕ ждём дату рождения — пропускаем дальше
-  if (!u || !u.awaitingBirthDate) return next();
+  if (!u || !u.awaitingBirthDate) {
+    console.log("   ✅ Не ждём дату рождения, вызываем next()");
+    return next();
+  }
+  
+  console.log("   ⚠️ Обрабатываем ввод даты рождения, НЕ вызываем next()");
 
   const raw = (ctx.message as any).text.trim();
   const parsed = parseBirthDate(raw);
@@ -1446,14 +1554,32 @@ const zodiacFirstMenu = Markup.keyboard([
 ]).resize();
 
 /**
- * Старт: проверяем onboarding статус из БД.
- * Если пользователь уже завершил onboarding — показываем главное меню.
- * Если нет — показываем приветствие или выбор знака.
- * ВАЖНО: telegram_id - единственный идентификатор пользователя, БД - единственный источник истины.
+ * Старт: ВРЕМЕННО УПРОЩЁН ДЛЯ ОТЛАДКИ
+ * Просто показываем reply keyboard без всей логики onboarding
  */
 bot.start(async (ctx) => {
+  console.log("🚀 [START] Команда /start вызвана");
+  console.log(`   User: ${ctx.from?.id} (@${ctx.from?.username || 'no-username'})`);
+  
   const telegramId = ctx.from!.id;
   
+  // ВРЕМЕННО: создаём пользователя без проверок
+  let user = getUserByTelegramId(telegramId);
+  if (!user) {
+    console.log("   📝 Создаём нового пользователя");
+    user = createUserIfNotExists(telegramId, {
+      onboardingCompleted: false
+    });
+  }
+  
+  // ВРЕМЕННО: просто показываем главное меню без проверок onboarding
+  console.log("   ✅ Показываем главное меню");
+  await ctx.replyWithHTML(
+    "✨ <b>Добро пожаловать!</b>\n\nВыбери раздел:",
+    mainMenu
+  );
+  
+  /* ОРИГИНАЛЬНАЯ ЛОГИКА (ЗАКОММЕНТИРОВАНА ДЛЯ ОТЛАДКИ):
   // ВАЖНО: Всегда получаем пользователя из БД, не используем session
   let user = getUserByTelegramId(telegramId);
   
@@ -1515,6 +1641,7 @@ bot.start(async (ctx) => {
       [Markup.button.callback("✅ Принять и продолжить", "accept_terms")],
     ])
   );
+  */
 });
 
 /**
