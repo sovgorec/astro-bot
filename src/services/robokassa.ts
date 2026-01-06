@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import db from "../db/init";
+import { getUserByTelegramId, createUserIfNotExists } from "../db/userRepository";
 
 /**
  * RoboKassa Merchant API интеграция
@@ -48,6 +49,15 @@ const BASE_URL = IS_TEST
  * @returns PaymentResult с invoiceId и paymentUrl, или null при ошибке
  */
 export function createPayment(telegramId: number): PaymentResult | null {
+  // ВАЖНО: Убеждаемся, что пользователь существует в БД перед созданием платежа
+  let user = getUserByTelegramId(telegramId);
+  if (!user) {
+    console.log(`📝 Создаём пользователя ${telegramId} при создании платежа`);
+    user = createUserIfNotExists(telegramId, {
+      onboardingCompleted: false
+    });
+  }
+  
   // Проверяем наличие MerchantLogin (строго из process.env, без модификаций)
   if (!MERCHANT_LOGIN) {
     console.error("❌ ROBOKASSA_MERCHANT_LOGIN is not set");
@@ -120,12 +130,15 @@ export function createPayment(telegramId: number): PaymentResult | null {
   const paymentUrl = `${BASE_URL}?${params.toString()}`;
   
   // Сохраняем платеж в БД с invoiceId (Date.now())
+  // ВАЖНО: telegram_id сохраняется как строка для согласованности с subscriptions
   const stmt = db.prepare(`
     INSERT INTO payments (id, telegram_id, amount, status, created_at)
     VALUES (?, ?, ?, 'pending', ?)
   `);
   try {
-    stmt.run(invoiceId, String(telegramId), AMOUNT, new Date().toISOString());
+    const telegramIdStr = String(telegramId);
+    stmt.run(invoiceId, telegramIdStr, AMOUNT, new Date().toISOString());
+    console.log(`💳 Платёж создан: invoiceId=${invoiceId}, telegramId=${telegramIdStr}, amount=${AMOUNT}`);
   } catch (err: any) {
     // Если id уже существует (крайне маловероятно для Date.now()), генерируем новый с добавлением миллисекунд
     if (err.code === 'SQLITE_CONSTRAINT_PRIMARYKEY') {
@@ -137,7 +150,9 @@ export function createPayment(telegramId: number): PaymentResult | null {
       params.set("InvId", invoiceIdWithRandom.toString());
       params.set("SignatureValue", signature2);
       
-      stmt.run(invoiceIdWithRandom, String(telegramId), AMOUNT, new Date().toISOString());
+      const telegramIdStr = String(telegramId);
+      stmt.run(invoiceIdWithRandom, telegramIdStr, AMOUNT, new Date().toISOString());
+      console.log(`💳 Платёж создан (retry): invoiceId=${invoiceIdWithRandom}, telegramId=${telegramIdStr}, amount=${AMOUNT}`);
       
       const paymentUrl2 = `${BASE_URL}?${params.toString()}`;
       

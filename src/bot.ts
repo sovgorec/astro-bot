@@ -1449,13 +1449,23 @@ const zodiacFirstMenu = Markup.keyboard([
  * Старт: проверяем onboarding статус из БД.
  * Если пользователь уже завершил onboarding — показываем главное меню.
  * Если нет — показываем приветствие или выбор знака.
+ * ВАЖНО: telegram_id - единственный идентификатор пользователя, БД - единственный источник истины.
  */
 bot.start(async (ctx) => {
   const telegramId = ctx.from!.id;
-  const user = getUserByTelegramId(telegramId);
+  
+  // ВАЖНО: Всегда получаем пользователя из БД, не используем session
+  let user = getUserByTelegramId(telegramId);
+  
+  // Если пользователя нет в БД — создаём его
+  if (!user) {
+    user = createUserIfNotExists(telegramId, {
+      onboardingCompleted: false
+    });
+  }
 
-  // Если пользователь уже завершил onboarding — показываем главное меню
-  if (user && user.onboardingCompleted && user.sign) {
+  // Если пользователь уже завершил onboarding и имеет знак — показываем главное меню
+  if (user.onboardingCompleted && user.sign) {
     await ctx.replyWithHTML(
       "✨ <b>Добро пожаловать обратно!</b>\n\nВыбери раздел:",
       mainMenu
@@ -1463,9 +1473,9 @@ bot.start(async (ctx) => {
     return;
   }
 
-  // Если пользователь существует, но не завершил onboarding — проверяем, принял ли условия
-  if (user && !user.onboardingCompleted) {
-    // Проверяем, есть ли у пользователя знак (старые пользователи)
+  // Если пользователь существует, но не завершил onboarding
+  if (!user.onboardingCompleted) {
+    // Проверяем, есть ли у пользователя знак (старые пользователи из миграции)
     if (user.sign) {
       // У старых пользователей есть знак, но нет флага onboarding — помечаем как завершённый
       updateUser(telegramId, { onboardingCompleted: true });
@@ -1485,7 +1495,20 @@ bot.start(async (ctx) => {
     return;
   }
 
-  // Новый пользователь — показываем приветствие
+  // Если onboarding завершён, но знака нет (не должно быть, но на всякий случай)
+  if (user.onboardingCompleted && !user.sign) {
+    await ctx.reply("✨ Выбери свой знак Зодиака:", {
+      parse_mode: "HTML",
+      ...Markup.inlineKeyboard(
+        zodiacList.map((z) => [
+          Markup.button.callback(`${z.emoji} ${z.name}`, `zodiac_${z.name.replace(/\s+/g, "_")}`)
+        ])
+      ),
+    });
+    return;
+  }
+
+  // Новый пользователь без onboarding — показываем приветствие
   await ctx.reply(
     welcomeText,
     Markup.inlineKeyboard([
@@ -1496,14 +1519,23 @@ bot.start(async (ctx) => {
 
 /**
  * Нажатие на «Принять и продолжить»
+ * ВАЖНО: Сохраняем в БД, не используем session
  */
 bot.action("accept_terms", async (ctx) => {
   const telegramId = ctx.from!.id;
   
-  // Создаём пользователя, если его нет, и помечаем, что условия приняты
-  createUserIfNotExists(telegramId, {
-    onboardingCompleted: false
-  });
+  // ВАЖНО: Создаём или обновляем пользователя в БД
+  let user = getUserByTelegramId(telegramId);
+  if (!user) {
+    user = createUserIfNotExists(telegramId, {
+      onboardingCompleted: false
+    });
+  } else {
+    // Обновляем существующего пользователя
+    updateUser(telegramId, {
+      onboardingCompleted: false
+    });
+  }
 
   await ctx.answerCbQuery();
   await ctx.editMessageText("Отлично, поехали! ✨");
