@@ -20,6 +20,7 @@ export interface UserData {
   birthDate?: string | null;
   arcans?: { main: number; relations: number; money: number; purpose: number; weak: number } | null;
   awaitingBirthDate?: boolean;
+  onboardingCompleted?: boolean;
 }
 
 export interface User extends UserData {
@@ -51,6 +52,7 @@ function rowToUser(row: any): User | null {
     birthDate: row.birth_date || null,
     arcans: row.arcans ? JSON.parse(row.arcans) : null,
     awaitingBirthDate: row.awaiting_birth_date === 1,
+    onboardingCompleted: row.onboarding_completed === 1,
   };
 }
 
@@ -74,8 +76,8 @@ export function createUserIfNotExists(telegramId: number, userData: UserData = {
       daily_hour, weekly_hour, weekly_dow, last_lunar_day,
       last_daily_date, last_daily_text, last_weekly_date, last_weekly_text,
       daily_task_index, current_test_id, current_question_index, current_test_score,
-      birth_date, arcans, awaiting_birth_date, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, unixepoch(), unixepoch())
+      birth_date, arcans, awaiting_birth_date, onboarding_completed, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, unixepoch(), unixepoch())
   `);
 
   stmt.run(
@@ -98,7 +100,8 @@ export function createUserIfNotExists(telegramId: number, userData: UserData = {
     userData.currentTestScore ?? 0,
     userData.birthDate || null,
     userData.arcans ? JSON.stringify(userData.arcans) : null,
-    userData.awaitingBirthDate ? 1 : 0
+    userData.awaitingBirthDate ? 1 : 0,
+    userData.onboardingCompleted ? 1 : 0
   );
 
   return getUserByTelegramId(telegramId)!;
@@ -184,6 +187,10 @@ export function updateUser(telegramId: number, patch: Partial<UserData>): void {
   if (patch.awaitingBirthDate !== undefined) {
     updates.push("awaiting_birth_date = ?");
     values.push(patch.awaitingBirthDate ? 1 : 0);
+  }
+  if (patch.onboardingCompleted !== undefined) {
+    updates.push("onboarding_completed = ?");
+    values.push(patch.onboardingCompleted ? 1 : 0);
   }
 
   if (updates.length === 0) return;

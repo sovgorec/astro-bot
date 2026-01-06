@@ -212,31 +212,52 @@ bot.action(/zodiac_(.+)/, async (ctx) => {
     if (!signEn) return ctx.answerCbQuery("Не смог распознать знак", { show_alert: true });
 
     const telegramId = ctx.from!.id;
-    createUserIfNotExists(telegramId, {
-      sign: signRu,
-      dailyIndex: 0,
-      weeklyIndex: 0,
-      timezone: null,
-      dailyHour: 9,
-      weeklyHour: 21,
-      weeklyDow: 0, // вс
-      lastLunarDay: null,
-      lastDailyDate: null,
-      lastDailyText: null,
-      lastWeeklyDate: null,
-      lastWeeklyText: null,
-      dailyTaskIndex: 0,
-      currentTestId: null,
-      currentQuestionIndex: 0,
-      currentTestScore: 0,
-      birthDate: null,
-      arcans: null,
-      awaitingBirthDate: false
-    });
+    
+    // Обновляем или создаём пользователя с выбранным знаком и помечаем onboarding как завершённый
+    const existingUser = getUserByTelegramId(telegramId);
+    if (existingUser) {
+      updateUser(telegramId, {
+        sign: signRu,
+        onboardingCompleted: true
+      });
+    } else {
+      createUserIfNotExists(telegramId, {
+        sign: signRu,
+        dailyIndex: 0,
+        weeklyIndex: 0,
+        timezone: null,
+        dailyHour: 9,
+        weeklyHour: 21,
+        weeklyDow: 0, // вс
+        lastLunarDay: null,
+        lastDailyDate: null,
+        lastDailyText: null,
+        lastWeeklyDate: null,
+        lastWeeklyText: null,
+        dailyTaskIndex: 0,
+        currentTestId: null,
+        currentQuestionIndex: 0,
+        currentTestScore: 0,
+        birthDate: null,
+        arcans: null,
+        awaitingBirthDate: false,
+        onboardingCompleted: true
+      });
+    }
 
     const user = getUserByTelegramId(telegramId)!;
     const text = getDailyText(signEn, user);
+    
     await ctx.answerCbQuery();
+    
+    // Удаляем inline keyboard (редактируем сообщение)
+    try {
+      await ctx.editMessageReplyMarkup(undefined);
+    } catch (e) {
+      // Игнорируем ошибки, если сообщение уже было отредактировано
+    }
+    
+    // Отправляем сообщение с главным меню (reply keyboard)
     await ctx.replyWithHTML(
       `<b>${getEmojiBySign(signRu)} Твой знак — ${escapeHTML(signRu)}</b>\n\n` +
       `🔮 ${escapeHTML(text)}\n\n` +
@@ -369,6 +390,72 @@ bot.hears("🎯 Задание дня", (ctx) => sendDailyTask(ctx));
 bot.hears("📋 Тесты", (ctx) => showTestsMenu(ctx));
 bot.hears("🔮 Матрица судьбы", (ctx) => openMatrix(ctx));
 bot.hears("⚙️ Настройки", (ctx) => showSettings(ctx));
+
+// Обработчик выбора знака зодиака через reply keyboard (для старых сообщений)
+const zodiacReplyButtons = ["♈ Овен", "♉ Телец", "♊ Близнецы", "♋ Рак", "♌ Лев", "♍ Дева", 
+  "♎ Весы", "♏ Скорпион", "♐ Стрелец", "♑ Козерог", "♒ Водолей", "♓ Рыбы"];
+
+bot.hears(zodiacReplyButtons, async (ctx) => {
+  const text = (ctx.message as any).text;
+  // Извлекаем название знака (убираем эмодзи)
+  const signRu = text.replace(/^[^\s]+\s+/, "").trim();
+  const signEn = zodiacMap[signRu];
+  
+  if (!signEn) {
+    await ctx.reply("Не смог распознать знак. Попробуй ещё раз.");
+    return;
+  }
+
+  const telegramId = ctx.from!.id;
+  
+  // Обновляем или создаём пользователя с выбранным знаком и помечаем onboarding как завершённый
+  const existingUser = getUserByTelegramId(telegramId);
+  if (existingUser) {
+    updateUser(telegramId, {
+      sign: signRu,
+      onboardingCompleted: true
+    });
+  } else {
+    createUserIfNotExists(telegramId, {
+      sign: signRu,
+      dailyIndex: 0,
+      weeklyIndex: 0,
+      timezone: null,
+      dailyHour: 9,
+      weeklyHour: 21,
+      weeklyDow: 0,
+      lastLunarDay: null,
+      lastDailyDate: null,
+      lastDailyText: null,
+      lastWeeklyDate: null,
+      lastWeeklyText: null,
+      dailyTaskIndex: 0,
+      currentTestId: null,
+      currentQuestionIndex: 0,
+      currentTestScore: 0,
+      birthDate: null,
+      arcans: null,
+      awaitingBirthDate: false,
+      onboardingCompleted: true
+    });
+  }
+
+  const user = getUserByTelegramId(telegramId)!;
+  const dailyText = getDailyText(signEn, user);
+  
+  // Удаляем reply keyboard и показываем главное меню
+  await ctx.replyWithHTML(
+    `<b>${getEmojiBySign(signRu)} Твой знак — ${escapeHTML(signRu)}</b>\n\n` +
+    `🔮 ${escapeHTML(dailyText)}\n\n` +
+    `Теперь выбери свой <b>часовой пояс</b>, чтобы прогнозы приходили вовремя.`,
+    Markup.removeKeyboard() // Удаляем reply keyboard
+  );
+  
+  // Показываем главное меню
+  await ctx.replyWithHTML("Выбери раздел:", mainMenu);
+  
+  showTimezoneRegions(ctx);
+});
 
 /* =========================
    Матрица судьбы — вход и разделы
@@ -1359,13 +1446,36 @@ const zodiacFirstMenu = Markup.keyboard([
 ]).resize();
 
 /**
- * Старт: если ещё не принял условия — показываем приветствие.
- * Если уже принял — сразу даём выбор знака.
+ * Старт: проверяем onboarding статус из БД.
+ * Если пользователь уже завершил onboarding — показываем главное меню.
+ * Если нет — показываем приветствие или выбор знака.
  */
 bot.start(async (ctx) => {
-  if (!ctx.session) ctx.session = {};
+  const telegramId = ctx.from!.id;
+  const user = getUserByTelegramId(telegramId);
 
-  if (!ctx.session.acceptedTerms) {
+  // Если пользователь уже завершил onboarding — показываем главное меню
+  if (user && user.onboardingCompleted && user.sign) {
+    await ctx.replyWithHTML(
+      "✨ <b>Добро пожаловать обратно!</b>\n\nВыбери раздел:",
+      mainMenu
+    );
+    return;
+  }
+
+  // Если пользователь существует, но не завершил onboarding — проверяем, принял ли условия
+  if (user && !user.onboardingCompleted) {
+    // Проверяем, есть ли у пользователя знак (старые пользователи)
+    if (user.sign) {
+      // У старых пользователей есть знак, но нет флага onboarding — помечаем как завершённый
+      updateUser(telegramId, { onboardingCompleted: true });
+      await ctx.replyWithHTML(
+        "✨ <b>Добро пожаловать обратно!</b>\n\nВыбери раздел:",
+        mainMenu
+      );
+      return;
+    }
+    // Если знака нет — показываем приветствие
     await ctx.reply(
       welcomeText,
       Markup.inlineKeyboard([
@@ -1375,20 +1485,31 @@ bot.start(async (ctx) => {
     return;
   }
 
-  await ctx.reply("✨ Выбери свой знак Зодиака:", zodiacFirstMenu);
+  // Новый пользователь — показываем приветствие
+  await ctx.reply(
+    welcomeText,
+    Markup.inlineKeyboard([
+      [Markup.button.callback("✅ Принять и продолжить", "accept_terms")],
+    ])
+  );
 });
 
 /**
  * Нажатие на «Принять и продолжить»
  */
 bot.action("accept_terms", async (ctx) => {
-  if (!ctx.session) ctx.session = {};
-  ctx.session.acceptedTerms = true;
+  const telegramId = ctx.from!.id;
+  
+  // Создаём пользователя, если его нет, и помечаем, что условия приняты
+  createUserIfNotExists(telegramId, {
+    onboardingCompleted: false
+  });
 
   await ctx.answerCbQuery();
   await ctx.editMessageText("Отлично, поехали! ✨");
 
-  await ctx.reply("✨ Выбери свой знак Зодиака:", zodiacFirstMenu);
+  // Показываем выбор знака через inline keyboard (не reply keyboard)
+  sendZodiacSelection(ctx);
 });
 
 /* =========================

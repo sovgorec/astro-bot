@@ -30,9 +30,27 @@ db.exec(`
     birth_date TEXT,
     arcans TEXT,
     awaiting_birth_date INTEGER DEFAULT 0,
+    onboarding_completed INTEGER DEFAULT 0,
     created_at INTEGER DEFAULT (unixepoch()),
     updated_at INTEGER DEFAULT (unixepoch())
   )
+`);
+
+// Миграция: добавляем поле onboarding_completed, если его нет
+try {
+  db.exec(`ALTER TABLE users ADD COLUMN onboarding_completed INTEGER DEFAULT 0`);
+} catch (err: any) {
+  // Поле уже существует, игнорируем ошибку
+  if (!err.message.includes('duplicate column name')) {
+    console.warn('Предупреждение при добавлении onboarding_completed:', err.message);
+  }
+}
+
+// Автоматически помечаем существующих пользователей с выбранным знаком как завершивших onboarding
+db.exec(`
+  UPDATE users 
+  SET onboarding_completed = 1 
+  WHERE sign IS NOT NULL AND sign != '' AND onboarding_completed = 0
 `);
 
 // Создаём таблицу subscriptions
