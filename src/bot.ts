@@ -579,94 +579,8 @@ bot.command("tariffs", async (ctx) => {
 
 /* =========================
    Кнопки основного меню (reply keyboard)
+   УДАЛЕНО: Все bot.hears удалены, роутинг перенесён в единый bot.on("text")
 ========================= */
-bot.hears("🌞 Прогноз на сегодня", async (ctx) => {
-  try {
-    await sendDaily(ctx);
-  } catch (err: any) {
-    console.error('❌ Error in "Прогноз на сегодня":', err);
-    try {
-      await ctx.reply("Произошла ошибка, попробуй ещё раз");
-    } catch (e) {}
-  }
-});
-
-bot.hears("🪐 Прогноз на неделю", async (ctx) => {
-  try {
-    await sendWeekly(ctx);
-  } catch (err: any) {
-    console.error('❌ Error in "Прогноз на неделю":', err);
-    try {
-      await ctx.reply("Произошла ошибка, попробуй ещё раз");
-    } catch (e) {}
-  }
-});
-
-bot.hears("🌕 Лунный день", async (ctx) => {
-  try {
-    await sendMoon(ctx);
-  } catch (err: any) {
-    console.error('❌ Error in "Лунный день":', err);
-    try {
-      await ctx.reply("Произошла ошибка, попробуй ещё раз");
-    } catch (e) {}
-  }
-});
-
-bot.hears("💞 Совместимость", (ctx) => {
-  try {
-    askCompatibility(ctx);
-  } catch (err: any) {
-    console.error('❌ Error in "Совместимость":', err);
-    try {
-      ctx.reply("Произошла ошибка, попробуй ещё раз").catch(() => {});
-    } catch (e) {}
-  }
-});
-
-bot.hears("🎯 Задание дня", (ctx) => {
-  try {
-    sendDailyTask(ctx);
-  } catch (err: any) {
-    console.error('❌ Error in "Задание дня":', err);
-    try {
-      ctx.reply("Произошла ошибка, попробуй ещё раз").catch(() => {});
-    } catch (e) {}
-  }
-});
-
-bot.hears("📋 Тесты", (ctx) => {
-  try {
-    showTestsMenu(ctx);
-  } catch (err: any) {
-    console.error('❌ Error in "Тесты":', err);
-    try {
-      ctx.reply("Произошла ошибка, попробуй ещё раз").catch(() => {});
-    } catch (e) {}
-  }
-});
-
-bot.hears("🔮 Матрица судьбы", (ctx) => {
-  try {
-    openMatrix(ctx);
-  } catch (err: any) {
-    console.error('❌ Error in "Матрица судьбы":', err);
-    try {
-      ctx.reply("Произошла ошибка, попробуй ещё раз").catch(() => {});
-    } catch (e) {}
-  }
-});
-
-bot.hears("⚙️ Настройки", (ctx) => {
-  try {
-    showSettings(ctx);
-  } catch (err: any) {
-    console.error('❌ Error in "Настройки":', err);
-    try {
-      ctx.reply("Произошла ошибка, попробуй ещё раз").catch(() => {});
-    } catch (e) {}
-  }
-});
 
 // Обработчик выбора знака зодиака через reply keyboard (для старых сообщений)
 // ВРЕМЕННО: ЗАКОММЕНТИРОВАН ДЛЯ ОТЛАДКИ, чтобы не перехватывать клики по кнопкам главного меню
@@ -1653,97 +1567,185 @@ function calculateMatrixArcans(parsed: { date: Date | undefined }): MatrixArcans
 ========================= */
 
 /* =========================
-   Обработка ввода даты рождения (только когда ожидаем)
-   ВАЖНО: Этот обработчик НЕ должен перехватывать reply-кнопки меню
-========================= */
-bot.on("text", async (ctx, next) => {
-  try {
-    const uid = ctx.from?.id;
-    if (!uid) return next();
-
-    const u = getUserByTelegramId(uid);
-
-    // Если НЕ ждём дату рождения — пропускаем дальше (к fallback или другим обработчикам)
-    if (!u || !u.awaitingBirthDate) {
-      return next();
-    }
-
-    // Обрабатываем ввод даты рождения только если awaitingBirthDate = true
-    const raw = (ctx.message as any).text.trim();
-    const parsed = parseBirthDate(raw);
-
-    if (!parsed.ok) {
-      try {
-        await ctx.reply(
-          "Я не понял дату 😅\n" +
-          "Введи формат <b>ДД.ММ.ГГГГ</b>.\n" +
-          "Например: 05.03.1992",
-          { parse_mode: "HTML" }
-        );
-      } catch (e) {
-        console.error('❌ Error sending date format message:', e);
-      }
-      return;
-    }
-
-    // Сохраняем и считаем
-    const arcans = calculateMatrixArcans({ date: parsed.date });
-    updateUser(uid, {
-      birthDate: parsed.display,
-      arcans: arcans,
-      awaitingBirthDate: false
-    });
-    const updatedUser = getUserByTelegramId(uid)!;
-
-    try {
-      await ctx.replyWithHTML(
-        `✅ Дата рождения сохранена: <b>${escapeHTML(updatedUser.birthDate!)}</b>\n` +
-        `Матрица рассчитана.\n\n` +
-        `Теперь выбери раздел 👇`,
-        mainMenu
-      );
-    } catch (e) {
-      console.error('❌ Error sending birthdate confirmation:', e);
-    }
-
-    try {
-      showMatrixSections(ctx, updatedUser);
-    } catch (e) {
-      console.error('❌ Error showing matrix sections:', e);
-    }
-  } catch (err: any) {
-    console.error('❌ Error in birthdate text handler:', err);
-    try {
-      await ctx.reply("Произошла ошибка, попробуй ещё раз");
-    } catch (e) {}
-  }
-});
-
-/* =========================
-   Fallback-обработчик для неизвестных текстовых сообщений
-   ВАЖНО: Должен быть в самом конце, после всех специфичных обработчиков
+   ЕДИНЫЙ РОУТЕР ТЕКСТОВЫХ СООБЩЕНИЙ
+   ВАЖНО: Порядок проверок критичен!
+   1. Команды (начинаются с "/")
+   2. awaitingBirthDate (ввод даты рождения)
+   3. Кнопки главного меню (строгое сравнение)
+   4. Fallback
 ========================= */
 bot.on("text", async (ctx) => {
   try {
-    // Игнорируем команды (они обрабатываются bot.command)
-    if ((ctx.message as any).text?.startsWith("/")) {
+    const text = (ctx.message as any).text;
+    if (!text) return;
+
+    const uid = ctx.from?.id;
+    if (!uid) return;
+
+    // a) ЕСЛИ текст начинается с "/" — return (команды обрабатываются bot.command)
+    if (text.startsWith("/")) {
       return;
     }
-    
-    // Игнорируем, если ожидаем дату рождения (это обрабатывается выше)
-    const uid = ctx.from?.id;
-    if (uid) {
-      const u = getUserByTelegramId(uid);
-      if (u?.awaitingBirthDate) {
-        return; // Уже обработано выше
+
+    const u = getUserByTelegramId(uid);
+
+    // b) ЕСЛИ user.awaitingBirthDate === true — ОБРАБОТАЙ ТОЛЬКО ДАТУ И return
+    if (u?.awaitingBirthDate) {
+      const raw = text.trim();
+      const parsed = parseBirthDate(raw);
+
+      if (!parsed.ok) {
+        try {
+          await ctx.reply(
+            "Я не понял дату 😅\n" +
+            "Введи формат <b>ДД.ММ.ГГГГ</b>.\n" +
+            "Например: 05.03.1992",
+            { parse_mode: "HTML" }
+          );
+        } catch (e) {
+          console.error('❌ Error sending date format message:', e);
+        }
+        return;
       }
+
+      // Сохраняем и считаем
+      const arcans = calculateMatrixArcans({ date: parsed.date });
+      updateUser(uid, {
+        birthDate: parsed.display,
+        arcans: arcans,
+        awaitingBirthDate: false
+      });
+      const updatedUser = getUserByTelegramId(uid)!;
+
+      try {
+        await ctx.replyWithHTML(
+          `✅ Дата рождения сохранена: <b>${escapeHTML(updatedUser.birthDate!)}</b>\n` +
+          `Матрица рассчитана.\n\n` +
+          `Теперь выбери раздел 👇`,
+          mainMenu
+        );
+      } catch (e) {
+        console.error('❌ Error sending birthdate confirmation:', e);
+      }
+
+      try {
+        showMatrixSections(ctx, updatedUser);
+      } catch (e) {
+        console.error('❌ Error showing matrix sections:', e);
+      }
+      return;
     }
+
+    // c) ВРУЧНУЮ СМАТЧИ ТЕКСТ КНОПОК МЕНЮ (строгое сравнение строк)
+    const trimmedText = text.trim();
     
-    // Для всех остальных текстовых сообщений показываем подсказку
-    await ctx.reply("Выбери раздел из меню 👇", mainMenu);
+    if (trimmedText === "🌞 Прогноз на сегодня") {
+      try {
+        await sendDaily(ctx);
+      } catch (err: any) {
+        console.error('❌ Error in "Прогноз на сегодня":', err);
+        try {
+          await ctx.reply("Произошла ошибка, попробуй ещё раз");
+        } catch (e) {}
+      }
+      return;
+    }
+
+    if (trimmedText === "🪐 Прогноз на неделю") {
+      try {
+        await sendWeekly(ctx);
+      } catch (err: any) {
+        console.error('❌ Error in "Прогноз на неделю":', err);
+        try {
+          await ctx.reply("Произошла ошибка, попробуй ещё раз");
+        } catch (e) {}
+      }
+      return;
+    }
+
+    if (trimmedText === "🌕 Лунный день") {
+      try {
+        await sendMoon(ctx);
+      } catch (err: any) {
+        console.error('❌ Error in "Лунный день":', err);
+        try {
+          await ctx.reply("Произошла ошибка, попробуй ещё раз");
+        } catch (e) {}
+      }
+      return;
+    }
+
+    if (trimmedText === "💞 Совместимость") {
+      try {
+        askCompatibility(ctx);
+      } catch (err: any) {
+        console.error('❌ Error in "Совместимость":', err);
+        try {
+          await ctx.reply("Произошла ошибка, попробуй ещё раз");
+        } catch (e) {}
+      }
+      return;
+    }
+
+    if (trimmedText === "🎯 Задание дня") {
+      try {
+        await sendDailyTask(ctx);
+      } catch (err: any) {
+        console.error('❌ Error in "Задание дня":', err);
+        try {
+          await ctx.reply("Произошла ошибка, попробуй ещё раз");
+        } catch (e) {}
+      }
+      return;
+    }
+
+    if (trimmedText === "📋 Тесты") {
+      try {
+        showTestsMenu(ctx);
+      } catch (err: any) {
+        console.error('❌ Error in "Тесты":', err);
+        try {
+          await ctx.reply("Произошла ошибка, попробуй ещё раз");
+        } catch (e) {}
+      }
+      return;
+    }
+
+    if (trimmedText === "🔮 Матрица судьбы") {
+      try {
+        await openMatrix(ctx);
+      } catch (err: any) {
+        console.error('❌ Error in "Матрица судьбы":', err);
+        try {
+          await ctx.reply("Произошла ошибка, попробуй ещё раз");
+        } catch (e) {}
+      }
+      return;
+    }
+
+    if (trimmedText === "⚙️ Настройки") {
+      try {
+        showSettings(ctx);
+      } catch (err: any) {
+        console.error('❌ Error in "Настройки":', err);
+        try {
+          await ctx.reply("Произошла ошибка, попробуй ещё раз");
+        } catch (e) {}
+      }
+      return;
+    }
+
+    // d) ЕСЛИ ничего не совпало — fallback
+    try {
+      await ctx.reply("Выбери раздел из меню 👇", mainMenu);
+    } catch (e) {
+      console.error('❌ Error sending fallback message:', e);
+    }
   } catch (err: any) {
-    console.error('❌ Error in fallback text handler:', err);
-    // Не отвечаем пользователю, чтобы не создавать цикл ошибок
+    console.error('❌ Error in text router:', err);
+    try {
+      await ctx.reply("Произошла ошибка, попробуй ещё раз");
+    } catch (e) {}
   }
 });
 
