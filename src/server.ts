@@ -104,7 +104,7 @@ app.post("/webhook/robokassa", async (req: Request, res: Response) => {
 
     // Обновляем статус платежа
     updatePaymentStatus(invoiceId, "paid");
-    console.log("✅ Payment status updated to 'paid':", invoiceId);
+    console.log(`[PAY] ✅ Payment status updated to 'paid' | InvoiceId: ${invoiceId}`);
 
     // Активируем подписку для этого telegram_id через webhook
     activateSubscription(telegramId, SUBSCRIPTION_DAYS, 'webhook');
@@ -115,17 +115,17 @@ app.post("/webhook/robokassa", async (req: Request, res: Response) => {
         telegramId,
         `✅ Подписка активирована на ${SUBSCRIPTION_DAYS} дней`
       );
-      console.log("📨 Notification sent to user:", telegramId);
+      console.log(`[PAY] 📨 Notification sent | User: ${telegramId}`);
     } catch (err: any) {
-      console.error("❌ Error sending notification to user:", telegramId, err?.message || err);
+      console.error(`[ERR] ❌ Error sending notification | User: ${telegramId}`, err?.message || err);
       // Не прерываем процесс, подписка уже активирована
     }
 
     // Возвращаем OK с invoice_id
     return res.send(`OK${invoiceId}`);
   } catch (err: any) {
-    console.error("❌ Webhook error:", err);
-    console.error("   Stack:", err?.stack);
+    console.error("[ERR] ❌ Webhook error:", err);
+    console.error("[ERR]    Stack:", err?.stack);
     return res.status(500).send("Internal server error");
   }
 });

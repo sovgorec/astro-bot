@@ -37,19 +37,10 @@ export function hasActiveSubscription(telegramId: number): boolean {
   
   if (lastPaidPayment) {
     // Найден оплаченный платёж - автоматически активируем подписку
-    console.log(`🔄 [FALLBACK] Восстановление подписки из оплаченного платежа:`, {
-      telegramId: telegramIdStr,
-      paymentId: lastPaidPayment.id,
-      paymentDate: lastPaidPayment.created_at
-    });
+    console.log(`[SUB] 🔄 FALLBACK: Восстановление подписки из оплаченного платежа | User: ${telegramIdStr} | PaymentId: ${lastPaidPayment.id}`);
     
     // Активируем подписку на стандартный срок через fallback
     activateSubscription(telegramId, SUBSCRIPTION_DAYS, 'fallback');
-    
-    console.log(`✅ [FALLBACK] Подписка автоматически активирована:`, {
-      telegramId: telegramIdStr,
-      days: SUBSCRIPTION_DAYS
-    });
     
     // Возвращаем true, так как подписка теперь активна
     return true;
@@ -85,12 +76,7 @@ export function activateSubscription(
   
   stmt.run(telegramIdStr, expiresAtStr);
   
-  console.log(`✅ [${source.toUpperCase()}] Подписка активирована:`, {
-    telegramId: telegramIdStr,
-    expiresAt: expiresAtStr,
-    days: days,
-    source: source
-  });
+  console.log(`[SUB] ✅ [${source.toUpperCase()}] Подписка активирована | User: ${telegramIdStr} | ExpiresAt: ${expiresAtStr} | Days: ${days}`);
 }
 
 
