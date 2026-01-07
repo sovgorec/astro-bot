@@ -11,6 +11,7 @@ import {
   getUserByTelegramId,
   createUserIfNotExists,
 } from "./db/userRepository";
+import { safeSendMessage } from "./utils/safeTelegram";
 
 const app = express();
 
