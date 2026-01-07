@@ -189,6 +189,25 @@ export function findPaymentById(id: number): { telegram_id: string; status: stri
   return row || null;
 }
 
+/**
+ * Находит последний оплаченный платёж для пользователя
+ * @param telegramId - ID пользователя Telegram
+ * @returns Информация о последнем оплаченном платеже или null
+ */
+export function findLastPaidPayment(telegramId: number): { id: number; created_at: string } | null {
+  const telegramIdStr = String(telegramId);
+  const stmt = db.prepare(`
+    SELECT id, created_at 
+    FROM payments 
+    WHERE telegram_id = ? AND status = 'paid' 
+    ORDER BY id DESC 
+    LIMIT 1
+  `);
+  const row = stmt.get(telegramIdStr) as { id: number; created_at: string } | undefined;
+  
+  return row || null;
+}
+
 export function updatePaymentStatus(id: number, status: string): void {
   const stmt = db.prepare("UPDATE payments SET status = ? WHERE id = ?");
   stmt.run(status, id);

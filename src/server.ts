@@ -106,12 +106,8 @@ app.post("/webhook/robokassa", async (req: Request, res: Response) => {
     updatePaymentStatus(invoiceId, "paid");
     console.log("✅ Payment status updated to 'paid':", invoiceId);
 
-    // Активируем подписку для этого telegram_id
-    activateSubscription(telegramId, SUBSCRIPTION_DAYS);
-    console.log("✅ Subscription activated:", {
-      telegramId,
-      days: SUBSCRIPTION_DAYS
-    });
+    // Активируем подписку для этого telegram_id через webhook
+    activateSubscription(telegramId, SUBSCRIPTION_DAYS, 'webhook');
 
     // Отправляем уведомление пользователю
     try {
