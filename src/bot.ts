@@ -133,12 +133,12 @@ async function showPaymentMessage(ctx: any): Promise<void> {
   // RoboKassa: редирект на внешний URL
   await safeSend(ctx, () =>
     ctx.replyWithHTML(
-      "🔒 <b>Эта функция доступна по подписке</b>\n\n" +
-      `Подписка на ${SUBSCRIPTION_DAYS} дней — <b>${SUBSCRIPTION_PRICE} ₽</b>\n\n` +
-      "Полный доступ ко всем функциям бота.",
-      Markup.inlineKeyboard([
-        [Markup.button.url("💳 Оплатить", payment.paymentUrl!)]
-      ])
+    "🔒 <b>Эта функция доступна по подписке</b>\n\n" +
+    `Подписка на ${SUBSCRIPTION_DAYS} дней — <b>${SUBSCRIPTION_PRICE} ₽</b>\n\n` +
+    "Полный доступ ко всем функциям бота.",
+    Markup.inlineKeyboard([
+      [Markup.button.url("💳 Оплатить", payment.paymentUrl!)]
+    ])
     )
   );
   
@@ -256,9 +256,9 @@ function sendZodiacSelection(ctx: any) {
     Markup.button.callback(`${z.emoji} ${z.name}`, `zodiac_${z.name.replace(/\s+/g, "_")}`)
   ]);
   safeSend(ctx, () =>
-    ctx.reply("🌟 <b>Выбери свой знак Зодиака:</b>", {
-      parse_mode: "HTML",
-      ...Markup.inlineKeyboard(rows),
+  ctx.reply("🌟 <b>Выбери свой знак Зодиака:</b>", {
+    parse_mode: "HTML",
+    ...Markup.inlineKeyboard(rows),
     })
   );
 }
@@ -322,13 +322,13 @@ bot.action(/zodiac_(.+)/, async (ctx) => {
       // Отправляем сообщение с главным меню (reply keyboard)
       await safeSend(ctx, () =>
         ctx.replyWithHTML(
-          `<b>${getEmojiBySign(signRu)} Твой знак — ${escapeHTML(signRu)}</b>\n\n` +
-          `🔮 ${escapeHTML(text)}\n\n` +
-          `Теперь выбери свой <b>часовой пояс</b>, чтобы прогнозы приходили вовремя.`,
-          mainMenu
+      `<b>${getEmojiBySign(signRu)} Твой знак — ${escapeHTML(signRu)}</b>\n\n` +
+      `🔮 ${escapeHTML(text)}\n\n` +
+      `Теперь выбери свой <b>часовой пояс</b>, чтобы прогнозы приходили вовремя.`,
+      mainMenu
         )
-      );
-      showTimezoneRegions(ctx);
+    );
+    showTimezoneRegions(ctx);
     } catch (err: any) {
       console.error('[ERR] ❌ Error in zodiac action:', err);
       await safeSend(ctx, () => ctx.reply("Произошла ошибка, попробуй ещё раз"));
@@ -372,13 +372,13 @@ bot.command("timezone", (ctx) => showTimezoneRegions(ctx));
 
 function showTimezoneRegions(ctx: any) {
   safeSend(ctx, () =>
-    ctx.reply("🌍 <b>Выбери свой регион:</b>", {
-      parse_mode: "HTML",
-      ...Markup.inlineKeyboard([
-        [Markup.button.callback("🇷🇺 Россия", "tz_region_Россия")],
-        [Markup.button.callback("🌍 Европа", "tz_region_Европа"), Markup.button.callback("🌏 Азия", "tz_region_Азия")],
-        [Markup.button.callback("🌎 Америка", "tz_region_Америка")],
-      ]),
+  ctx.reply("🌍 <b>Выбери свой регион:</b>", {
+    parse_mode: "HTML",
+    ...Markup.inlineKeyboard([
+      [Markup.button.callback("🇷🇺 Россия", "tz_region_Россия")],
+      [Markup.button.callback("🌍 Европа", "tz_region_Европа"), Markup.button.callback("🌏 Азия", "tz_region_Азия")],
+      [Markup.button.callback("🌎 Америка", "tz_region_Америка")],
+    ]),
     })
   );
 }
@@ -404,8 +404,8 @@ bot.action(/tz_region_(.+)/, async (ctx) => {
 
       await safeSend(ctx, () =>
         ctx.reply(`<b>🕒 Выбери город (${escapeHTML(region)}):</b>`, {
-          parse_mode: "HTML",
-          ...Markup.inlineKeyboard(buttons),
+    parse_mode: "HTML",
+    ...Markup.inlineKeyboard(buttons),
         })
       );
     } catch (err: any) {
@@ -433,26 +433,26 @@ bot.action(/tz_select_(.+)/, async (ctx) => {
     try {
   const tz = ctx.match[1];
   const uid = ctx.from!.id;
-      let user = getUserByTelegramId(uid);
+  let user = getUserByTelegramId(uid);
       if (!user) {
         await safeSend(ctx, () => ctx.reply("Сначала выбери знак через /start 🔮"));
         return;
       }
       
-      updateUser(uid, { timezone: tz });
-      user = ensureUserDefaults(getUserByTelegramId(uid)!);
+  updateUser(uid, { timezone: tz });
+  user = ensureUserDefaults(getUserByTelegramId(uid)!);
 
-      const local = new Date(new Date().toLocaleString("en-US", { timeZone: tz }));
-      const timeNow = local.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+  const local = new Date(new Date().toLocaleString("en-US", { timeZone: tz }));
+  const timeNow = local.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
       
       console.log(`[CB] 🌍 Timezone set: ${tz} | User: ${uid}`);
       
       await safeSend(ctx, () =>
         ctx.replyWithHTML(
-          `✅ Часовой пояс установлен: <b>${escapeHTML(tz)}</b>\n🕐 Сейчас: <b>${escapeHTML(timeNow)}</b>`,
-          mainMenu
+    `✅ Часовой пояс установлен: <b>${escapeHTML(tz)}</b>\n🕐 Сейчас: <b>${escapeHTML(timeNow)}</b>`,
+    mainMenu
         )
-      );
+  );
     } catch (err: any) {
       console.error('[ERR] ❌ Error in tz_select action:', err);
       await safeSend(ctx, () => ctx.reply("Произошла ошибка, попробуй ещё раз"));
@@ -540,11 +540,11 @@ bot.command("matrix", async (ctx) => {
 bot.command("tariffs", async (ctx) => {
   try {
     await safeSend(ctx, () =>
-      ctx.replyWithHTML(
-        `💳 <b>Тарифы и оплата</b>\n\n` +
-        `Информация о тарифах и способах оплаты:\n\n` +
-        `<a href="https://docs.google.com/document/d/1Q53-21nSGnMPqVktqlfyrXHEHr9teB2Q1jyk-SGiQAw/edit?usp=sharing">Открыть документ с тарифами</a>`,
-        mainMenu
+  ctx.replyWithHTML(
+    `💳 <b>Тарифы и оплата</b>\n\n` +
+    `Информация о тарифах и способах оплаты:\n\n` +
+    `<a href="https://docs.google.com/document/d/1Q53-21nSGnMPqVktqlfyrXHEHr9teB2Q1jyk-SGiQAw/edit?usp=sharing">Открыть документ с тарифами</a>`,
+    mainMenu
       )
     );
   } catch (err: any) {
@@ -649,11 +649,11 @@ async function openMatrix(ctx: any) {
     updateUser(u.telegramId, { awaitingBirthDate: true });
 
     await safeSend(ctx, () =>
-      ctx.replyWithHTML(
-        "🔮 <b>Матрица судьбы</b>\n\n" +
-        "Чтобы рассчитать матрицу, введи дату рождения в формате <b>ДД.ММ.ГГГГ</b>.\n\n" +
-        "Например: <code>19.10.1989</code>",
-        { parse_mode: "HTML" }
+    ctx.replyWithHTML(
+      "🔮 <b>Матрица судьбы</b>\n\n" +
+      "Чтобы рассчитать матрицу, введи дату рождения в формате <b>ДД.ММ.ГГГГ</b>.\n\n" +
+      "Например: <code>19.10.1989</code>",
+      { parse_mode: "HTML" }
       )
     );
     return;
@@ -667,18 +667,18 @@ function showMatrixSections(ctx: any, u: any) {
   const bdate = u.birthDate ? String(u.birthDate) : "не указана";
 
   safeSend(ctx, () =>
-    ctx.replyWithHTML(
-      `🔮 <b>Твоя матрица судьбы</b>\n` +
-      `Дата рождения: <b>${escapeHTML(bdate)}</b>\n\n` +
-      `Выбери раздел, который хочешь посмотреть:`,
-      Markup.inlineKeyboard([
-        [Markup.button.callback("🧬 Общая характеристика", "matrix_general")],
-        [Markup.button.callback("❤️ Отношения", "matrix_relations")],
-        [Markup.button.callback("💰 Деньги", "matrix_money")],
-        [Markup.button.callback("🧭 Предназначение", "matrix_purpose")],
-        [Markup.button.callback("⚠️ Слабые зоны", "matrix_weak")],
-        [Markup.button.callback("✨ Рекомендации", "matrix_reco")]
-      ])
+  ctx.replyWithHTML(
+    `🔮 <b>Твоя матрица судьбы</b>\n` +
+    `Дата рождения: <b>${escapeHTML(bdate)}</b>\n\n` +
+    `Выбери раздел, который хочешь посмотреть:`,
+    Markup.inlineKeyboard([
+      [Markup.button.callback("🧬 Общая характеристика", "matrix_general")],
+      [Markup.button.callback("❤️ Отношения", "matrix_relations")],
+      [Markup.button.callback("💰 Деньги", "matrix_money")],
+      [Markup.button.callback("🧭 Предназначение", "matrix_purpose")],
+      [Markup.button.callback("⚠️ Слабые зоны", "matrix_weak")],
+      [Markup.button.callback("✨ Рекомендации", "matrix_reco")]
+    ])
     )
   );
 }
@@ -687,67 +687,67 @@ bot.action("matrix_general", async (ctx) => {
   await safeAnswerCallback(ctx, "⏳");
   setImmediate(async () => {
     try {
-      await sendMatrixSection(ctx, "general");
+  await sendMatrixSection(ctx, "general");
     } catch (err: any) {
       console.error('[ERR] ❌ Error in matrix_general:', err);
       await safeSend(ctx, () => ctx.reply("Произошла ошибка, попробуй ещё раз"));
     }
-  });
+});
 });
 
 bot.action("matrix_relations", async (ctx) => {
   await safeAnswerCallback(ctx, "⏳");
   setImmediate(async () => {
     try {
-      await sendMatrixSection(ctx, "relations");
+  await sendMatrixSection(ctx, "relations");
     } catch (err: any) {
       console.error('[ERR] ❌ Error in matrix_relations:', err);
       try { await ctx.reply("Произошла ошибка, попробуй ещё раз"); } catch (e) {}
     }
-  });
+});
 });
 
 bot.action("matrix_money", async (ctx) => {
   await safeAnswerCallback(ctx, "⏳");
   setImmediate(async () => {
     try {
-      await sendMatrixSection(ctx, "money");
+  await sendMatrixSection(ctx, "money");
     } catch (err: any) {
       console.error('[ERR] ❌ Error in matrix_money:', err);
       try { await ctx.reply("Произошла ошибка, попробуй ещё раз"); } catch (e) {}
     }
-  });
+});
 });
 
 bot.action("matrix_purpose", async (ctx) => {
   await safeAnswerCallback(ctx, "⏳");
   setImmediate(async () => {
     try {
-      await sendMatrixSection(ctx, "purpose");
+  await sendMatrixSection(ctx, "purpose");
     } catch (err: any) {
       console.error('[ERR] ❌ Error in matrix_purpose:', err);
       try { await ctx.reply("Произошла ошибка, попробуй ещё раз"); } catch (e) {}
     }
-  });
+});
 });
 
 bot.action("matrix_weak", async (ctx) => {
   await safeAnswerCallback(ctx, "⏳");
   setImmediate(async () => {
     try {
-      await sendMatrixSection(ctx, "weak");
+  await sendMatrixSection(ctx, "weak");
     } catch (err: any) {
       console.error('[ERR] ❌ Error in matrix_weak:', err);
       try { await ctx.reply("Произошла ошибка, попробуй ещё раз"); } catch (e) {}
     }
-  });
+});
 });
 
 bot.action("matrix_reco", async (ctx) => {
   await safeAnswerCallback(ctx, "⏳");
   setImmediate(async () => {
     try {
-      await sendMatrixSection(ctx, "recommendations");
+  await sendMatrixSection(ctx, "recommendations");
     } catch (err: any) {
       console.error('[ERR] ❌ Error in matrix_reco:', err);
       try { await ctx.reply("Произошла ошибка, попробуй ещё раз"); } catch (e) {}
@@ -759,13 +759,13 @@ bot.action("matrix_back", async (ctx) => {
   await safeAnswerCallback(ctx, "⏳");
   setImmediate(async () => {
     try {
-      const u = getUserByTelegramId(ctx.from!.id);
-      if (!u) {
-        await ctx.reply("Сначала выбери знак через /start 🔮");
+  const u = getUserByTelegramId(ctx.from!.id);
+  if (!u) {
+        await safeSend(ctx, () => ctx.reply("Сначала выбери знак через /start 🔮"));
         return;
-      }
-      ensureUserDefaults(u);
-      showMatrixSections(ctx, getUserByTelegramId(ctx.from!.id)!);
+  }
+  ensureUserDefaults(u);
+  showMatrixSections(ctx, getUserByTelegramId(ctx.from!.id)!);
     } catch (err: any) {
       console.error('[ERR] ❌ Error in matrix_back:', err);
       try { await ctx.reply("Произошла ошибка, попробуй ещё раз"); } catch (e) {}
@@ -782,8 +782,8 @@ async function sendMatrixSection(ctx: any, section: string) {
     updateUser(u.telegramId, { awaitingBirthDate: true });
     await safeSend(ctx, () =>
       ctx.replyWithHTML(
-        "Чтобы показать этот раздел, мне нужна твоя дата рождения.\n" +
-        "Введи её в формате <b>ДД.ММ.ГГГГ</b>."
+      "Чтобы показать этот раздел, мне нужна твоя дата рождения.\n" +
+      "Введи её в формате <b>ДД.ММ.ГГГГ</b>."
       )
     );
     return;
@@ -826,10 +826,10 @@ async function sendMatrixSection(ctx: any, section: string) {
 
   await safeSend(ctx, () =>
     ctx.replyWithHTML(
-      `${titles[section]}\n\n${escapeHTML(text)}`,
-      Markup.inlineKeyboard([
-        [Markup.button.callback("⬅️ Назад", "matrix_back")],
-      ])
+    `${titles[section]}\n\n${escapeHTML(text)}`,
+    Markup.inlineKeyboard([
+      [Markup.button.callback("⬅️ Назад", "matrix_back")],
+    ])
     )
   );
 }
@@ -848,7 +848,7 @@ async function sendDaily(ctx: any) {
   await safeSend(ctx, () =>
     ctx.replyWithHTML(
       `🌞 <b>Прогноз на сегодня для ${escapeHTML(u.sign || "")}:</b>\n\n${escapeHTML(text)}`,
-      mainMenu
+    mainMenu
     )
   );
 }
@@ -869,7 +869,7 @@ async function sendWeekly(ctx: any) {
   await safeSend(ctx, () =>
     ctx.replyWithHTML(
       `🪐 <b>Прогноз на неделю для ${escapeHTML(u.sign || "")}:</b>\n\n${escapeHTML(text)}`,
-      mainMenu
+    mainMenu
     )
   );
 }
@@ -887,9 +887,9 @@ function askCompatibility(ctx: any) {
   ]);
 
   safeSend(ctx, () =>
-    ctx.reply("💞 <b>Выбери знак партнёра:</b>", {
-      parse_mode: "HTML",
-      ...Markup.inlineKeyboard(rows),
+  ctx.reply("💞 <b>Выбери знак партнёра:</b>", {
+    parse_mode: "HTML",
+    ...Markup.inlineKeyboard(rows),
     })
   );
 }
@@ -898,30 +898,30 @@ bot.action(/compat_(.+)/, async (ctx) => {
   await safeAnswerCallback(ctx, "⏳");
   setImmediate(async () => {
     try {
-      const partnerRu = ctx.match[1].replace(/_/g, " ");
-      const u = getUserByTelegramId(ctx.from!.id);
+  const partnerRu = ctx.match[1].replace(/_/g, " ");
+  const u = getUserByTelegramId(ctx.from!.id);
 
       if (!u?.sign) {
         sendZodiacSelection(ctx);
         return;
       }
 
-      const sign1 = zodiacMap[u.sign];
-      const sign2 = zodiacMap[partnerRu];
+  const sign1 = zodiacMap[u.sign];
+  const sign2 = zodiacMap[partnerRu];
 
-      const match = compatibility.find((r: any) =>
-        (r.sign1 === sign1 && r.sign2 === sign2) ||
-        (r.sign1 === sign2 && r.sign2 === sign1)
-      );
+  const match = compatibility.find((r: any) =>
+    (r.sign1 === sign1 && r.sign2 === sign2) ||
+    (r.sign1 === sign2 && r.sign2 === sign1)
+  );
 
-      const text = match ? match.text : "Информация о совместимости не найдена 😅";
+  const text = match ? match.text : "Информация о совместимости не найдена 😅";
 
       await safeSend(ctx, () =>
         ctx.replyWithHTML(
           `💞 <b>Совместимость ${escapeHTML(u.sign || "")} + ${escapeHTML(partnerRu)}:</b>\n\n${escapeHTML(text)}`,
-          mainMenu
+    mainMenu
         )
-      );
+  );
     } catch (err: any) {
       console.error('[ERR] ❌ Error in compat action:', err);
       await safeSend(ctx, () => ctx.reply("Произошла ошибка, попробуй ещё раз"));
@@ -1010,13 +1010,13 @@ function showSettings(ctx: any) {
   ];
 
   safeSend(ctx, () =>
-    ctx.replyWithHTML(
-      `⚙️ <b>Текущие настройки</b>\n\n` +
-      `🌍 Часовой пояс: <b>${escapeHTML(tzText)}</b>\n` +
-      `🌞 Daily: <b>${u.dailyHour}:00</b>\n` +
-      `🪐 Weekly: <b>${u.weeklyDow}</b> день, <b>${u.weeklyHour}:00</b>\n` +
-      `📅 Дата рождения: <b>${escapeHTML(bday)}</b>`,
-      Markup.inlineKeyboard(keyboard)
+  ctx.replyWithHTML(
+    `⚙️ <b>Текущие настройки</b>\n\n` +
+    `🌍 Часовой пояс: <b>${escapeHTML(tzText)}</b>\n` +
+    `🌞 Daily: <b>${u.dailyHour}:00</b>\n` +
+    `🪐 Weekly: <b>${u.weeklyDow}</b> день, <b>${u.weeklyHour}:00</b>\n` +
+    `📅 Дата рождения: <b>${escapeHTML(bday)}</b>`,
+    Markup.inlineKeyboard(keyboard)
     )
   );
 }
@@ -1025,7 +1025,7 @@ bot.action("settings_tz", async (ctx) => {
   await safeAnswerCallback(ctx, "⏳");
   setImmediate(async () => {
     try {
-      showTimezoneRegions(ctx);
+  showTimezoneRegions(ctx);
     } catch (err: any) {
       console.error('[ERR] ❌ Error in settings_tz:', err);
       try { await ctx.reply("Произошла ошибка, попробуй ещё раз"); } catch (e) {}
@@ -1038,15 +1038,15 @@ bot.action("settings_daily", async (ctx) => {
   setImmediate(async () => {
     try {
       await safeSend(ctx, () =>
-        ctx.replyWithHTML(
-          "⏰ <b>Выбери время ежедневного уведомления</b>",
-          Markup.inlineKeyboard([
-            [Markup.button.callback("07:00", "daily_7"), Markup.button.callback("09:00", "daily_9")],
-            [Markup.button.callback("11:00", "daily_11"), Markup.button.callback("18:00", "daily_18")],
-            [Markup.button.callback("⬅️ Назад", "settings_back")],
-          ])
+  ctx.replyWithHTML(
+    "⏰ <b>Выбери время ежедневного уведомления</b>",
+    Markup.inlineKeyboard([
+      [Markup.button.callback("07:00", "daily_7"), Markup.button.callback("09:00", "daily_9")],
+      [Markup.button.callback("11:00", "daily_11"), Markup.button.callback("18:00", "daily_18")],
+      [Markup.button.callback("⬅️ Назад", "settings_back")],
+    ])
         )
-      );
+  );
     } catch (err: any) {
       console.error('[ERR] ❌ Error in settings_daily:', err);
       await safeSend(ctx, () => ctx.reply("Произошла ошибка, попробуй ещё раз"));
@@ -1058,14 +1058,14 @@ bot.action(/daily_(\d+)/, async (ctx) => {
   await safeAnswerCallback(ctx, "⏳");
   setImmediate(async () => {
     try {
-      const hour = Number(ctx.match[1]);
-      const u = getUserByTelegramId(ctx.from!.id);
+  const hour = Number(ctx.match[1]);
+  const u = getUserByTelegramId(ctx.from!.id);
       if (!u?.sign) {
         sendZodiacSelection(ctx);
         return;
       }
-      ensureUserDefaults(u);
-      updateUser(ctx.from!.id, { dailyHour: hour });
+  ensureUserDefaults(u);
+  updateUser(ctx.from!.id, { dailyHour: hour });
       await safeSend(ctx, () => ctx.replyWithHTML(`✅ Установлено: <b>${hour}:00</b>`, mainMenu));
     } catch (err: any) {
       console.error('[ERR] ❌ Error in daily action:', err);
@@ -1079,15 +1079,15 @@ bot.action("settings_weekly", async (ctx) => {
   setImmediate(async () => {
     try {
       await safeSend(ctx, () =>
-        ctx.replyWithHTML(
-          "🗓 <b>Выбери день и время еженедельного уведомления</b>",
-          Markup.inlineKeyboard([
-            [Markup.button.callback("Вс 21:00", "weekly_0_21"), Markup.button.callback("Пн 09:00", "weekly_1_9")],
-            [Markup.button.callback("Пт 18:00", "weekly_5_18")],
-            [Markup.button.callback("⬅️ Назад", "settings_back")],
-          ])
+  ctx.replyWithHTML(
+    "🗓 <b>Выбери день и время еженедельного уведомления</b>",
+    Markup.inlineKeyboard([
+      [Markup.button.callback("Вс 21:00", "weekly_0_21"), Markup.button.callback("Пн 09:00", "weekly_1_9")],
+      [Markup.button.callback("Пт 18:00", "weekly_5_18")],
+      [Markup.button.callback("⬅️ Назад", "settings_back")],
+    ])
         )
-      );
+  );
     } catch (err: any) {
       console.error('[ERR] ❌ Error in settings_weekly:', err);
       await safeSend(ctx, () => ctx.reply("Произошла ошибка, попробуй ещё раз"));
@@ -1099,25 +1099,25 @@ bot.action("settings_birthdate", async (ctx) => {
   await safeAnswerCallback(ctx, "⏳");
   setImmediate(async () => {
     try {
-      const uid = ctx.from!.id;
-      const u = getUserByTelegramId(uid);
+  const uid = ctx.from!.id;
+  const u = getUserByTelegramId(uid);
 
       if (!u) {
         await safeSend(ctx, () => ctx.reply("Сначала выбери знак 🌟", mainMenu));
         return;
       }
 
-      ensureUserDefaults(u);
-      updateUser(uid, { awaitingBirthDate: true });
+  ensureUserDefaults(u);
+  updateUser(uid, { awaitingBirthDate: true });
 
       await safeSend(ctx, () =>
         ctx.replyWithHTML(
-          "📅 <b>Изменение даты рождения</b>\n\n" +
-          "Введи дату в формате <b>ДД.ММ.ГГГГ</b>\n" +
-          "Например: <code>19.10.1989</code>",
-          { parse_mode: "HTML" }
+    "📅 <b>Изменение даты рождения</b>\n\n" +
+    "Введи дату в формате <b>ДД.ММ.ГГГГ</b>\n" +
+    "Например: <code>19.10.1989</code>",
+    { parse_mode: "HTML" }
         )
-      );
+  );
     } catch (err: any) {
       console.error('[ERR] ❌ Error in settings_birthdate:', err);
       await safeSend(ctx, () => ctx.reply("Произошла ошибка, попробуй ещё раз"));
@@ -1129,17 +1129,17 @@ bot.action(/weekly_(\d+)_(\d+)/, async (ctx) => {
   await safeAnswerCallback(ctx, "⏳");
   setImmediate(async () => {
     try {
-      const dow = Number(ctx.match[1]);
-      const hour = Number(ctx.match[2]);
+  const dow = Number(ctx.match[1]);
+  const hour = Number(ctx.match[2]);
 
-      const u = getUserByTelegramId(ctx.from!.id);
+  const u = getUserByTelegramId(ctx.from!.id);
       if (!u?.sign) {
         sendZodiacSelection(ctx);
         return;
       }
 
-      ensureUserDefaults(u);
-      updateUser(ctx.from!.id, { weeklyDow: dow, weeklyHour: hour });
+  ensureUserDefaults(u);
+  updateUser(ctx.from!.id, { weeklyDow: dow, weeklyHour: hour });
 
       await safeSend(ctx, () => ctx.replyWithHTML(`✅ Установлено: <b>${dow}</b> день, <b>${hour}:00</b>`, mainMenu));
     } catch (err: any) {
@@ -1153,7 +1153,7 @@ bot.action("settings_back", async (ctx) => {
   await safeAnswerCallback(ctx, "⏳");
   setImmediate(async () => {
     try {
-      showSettings(ctx);
+  showSettings(ctx);
     } catch (err: any) {
       console.error('[ERR] ❌ Error in settings_back:', err);
       await safeSend(ctx, () => ctx.reply("Произошла ошибка, попробуй ещё раз"));
@@ -1185,8 +1185,8 @@ async function sendDailyTask(ctx: any) {
 
   await safeSend(ctx, () =>
     ctx.replyWithHTML(
-      `🎯 <b>Задание дня</b>\n\n${escapeHTML(text)}`,
-      mainMenu
+    `🎯 <b>Задание дня</b>\n\n${escapeHTML(text)}`,
+    mainMenu
     )
   );
 }
@@ -1208,9 +1208,9 @@ function showTestsMenu(ctx: any) {
   buttons.push([Markup.button.callback("🏠 Главное меню", "tests_home")]);
 
   safeSend(ctx, () =>
-    ctx.replyWithHTML(
-      "📋 <b>Тесты</b>\n\nВыбери тест:",
-      Markup.inlineKeyboard(buttons)
+  ctx.replyWithHTML(
+    "📋 <b>Тесты</b>\n\nВыбери тест:",
+    Markup.inlineKeyboard(buttons)
     )
   );
 }
@@ -1230,7 +1230,7 @@ bot.action("tests_menu", async (ctx) => {
   await safeAnswerCallback(ctx, "⏳");
   setImmediate(async () => {
     try {
-      showTestsMenu(ctx);
+  showTestsMenu(ctx);
     } catch (err: any) {
       console.error('[ERR] ❌ Error in tests_menu:', err);
       await safeSend(ctx, () => ctx.reply("Произошла ошибка, попробуй ещё раз"));
@@ -1242,27 +1242,27 @@ bot.action(/test_open_(.+)/, async (ctx) => {
   await safeAnswerCallback(ctx, "⏳");
   setImmediate(async () => {
     try {
-      const id = ctx.match[1];
-      const test = loadTestById(id);
+  const id = ctx.match[1];
+  const test = loadTestById(id);
 
-      if (!test || !Array.isArray(test.questions) || test.questions.length === 0) {
+  if (!test || !Array.isArray(test.questions) || test.questions.length === 0) {
         await safeSend(ctx, () => ctx.reply("Не удалось загрузить тест."));
         return;
-      }
+  }
 
-      const total = test.meta?.questions || test.questions.length;
+  const total = test.meta?.questions || test.questions.length;
 
-      const intro =
-        `<b>${escapeHTML(test.title)}</b>\n\n` +
-        `${escapeHTML(test.description || "")}\n\n` +
-        `🧭 <b>${total} вопросов</b>\n` +
-        `Отвечай честно — нет правильных ответов.`;
+  const intro =
+    `<b>${escapeHTML(test.title)}</b>\n\n` +
+    `${escapeHTML(test.description || "")}\n\n` +
+    `🧭 <b>${total} вопросов</b>\n` +
+    `Отвечай честно — нет правильных ответов.`;
 
       await safeSend(ctx, () =>
         ctx.replyWithHTML(intro, Markup.inlineKeyboard([
-          [Markup.button.callback("▶️ Начать", `test_start_${id}`)],
-          [Markup.button.callback("📋 Назад", "tests_menu")],
-          [Markup.button.callback("🏠 Меню", "tests_home")]
+    [Markup.button.callback("▶️ Начать", `test_start_${id}`)],
+    [Markup.button.callback("📋 Назад", "tests_menu")],
+    [Markup.button.callback("🏠 Меню", "tests_home")]
         ]))
       );
     } catch (err: any) {
@@ -1276,30 +1276,30 @@ bot.action(/test_start_(.+)/, async (ctx) => {
   await safeAnswerCallback(ctx, "⏳");
   setImmediate(async () => {
     try {
-      const id = ctx.match[1];
-      const uid = ctx.from!.id;
+  const id = ctx.match[1];
+  const uid = ctx.from!.id;
 
-      let u = getUserByTelegramId(uid);
-      if (!u || !u.sign) {
+  let u = getUserByTelegramId(uid);
+  if (!u || !u.sign) {
         sendZodiacSelection(ctx);
         return;
-      }
-      ensureUserDefaults(u);
+  }
+  ensureUserDefaults(u);
 
-      const test = loadTestById(id);
-      if (!test || !Array.isArray(test.questions)) {
+  const test = loadTestById(id);
+  if (!test || !Array.isArray(test.questions)) {
         await safeSend(ctx, () => ctx.reply("Ошибка загрузки теста."));
         return;
-      }
+  }
 
-      updateUser(uid, {
-        currentTestId: id,
-        currentQuestionIndex: 0,
-        currentTestScore: 0
-      });
-      u = getUserByTelegramId(uid)!;
+  updateUser(uid, {
+    currentTestId: id,
+    currentQuestionIndex: 0,
+    currentTestScore: 0
+  });
+  u = getUserByTelegramId(uid)!;
 
-      await sendTestQuestion(ctx, u, test);
+  await sendTestQuestion(ctx, u, test);
     } catch (err: any) {
       console.error('[ERR] ❌ Error in test_start:', err);
       await safeSend(ctx, () => ctx.reply("Произошла ошибка, попробуй ещё раз"));
@@ -1311,72 +1311,72 @@ bot.action(/answer_(\d+)_(\d+)/, async (ctx) => {
   await safeAnswerCallback(ctx, "⏳");
   setImmediate(async () => {
     try {
-      const qIndex = Number(ctx.match[1]);
-      const answerNum = Number(ctx.match[2]);
-      const uid = ctx.from!.id;
+  const qIndex = Number(ctx.match[1]);
+  const answerNum = Number(ctx.match[2]);
+  const uid = ctx.from!.id;
 
-      let u = getUserByTelegramId(uid);
-      if (!u || !u.currentTestId) {
-        return;
-      }
-      ensureUserDefaults(u);
+  let u = getUserByTelegramId(uid);
+  if (!u || !u.currentTestId) {
+    return;
+  }
+  ensureUserDefaults(u);
 
-      const test = loadTestById(u.currentTestId);
-      if (!test) {
-        return;
-      }
+  const test = loadTestById(u.currentTestId);
+  if (!test) {
+    return;
+  }
 
-      if (qIndex !== u.currentQuestionIndex) {
-        return;
-      }
+  if (qIndex !== u.currentQuestionIndex) {
+    return;
+  }
 
-      const q = test.questions[qIndex];
-      const scores: number[] = q.scores || [];
-      const score = scores[answerNum - 1] || 0;
+  const q = test.questions[qIndex];
+  const scores: number[] = q.scores || [];
+  const score = scores[answerNum - 1] || 0;
 
-      const currentScore = u.currentTestScore ?? 0;
-      const currentQuestionIndex = u.currentQuestionIndex ?? 0;
-      const newScore = currentScore + score;
-      const newQuestionIndex = currentQuestionIndex + 1;
-      updateUser(uid, {
-        currentTestScore: newScore,
-        currentQuestionIndex: newQuestionIndex
-      });
-      u = getUserByTelegramId(uid)!;
+  const currentScore = u.currentTestScore ?? 0;
+  const currentQuestionIndex = u.currentQuestionIndex ?? 0;
+  const newScore = currentScore + score;
+  const newQuestionIndex = currentQuestionIndex + 1;
+  updateUser(uid, {
+    currentTestScore: newScore,
+    currentQuestionIndex: newQuestionIndex
+  });
+  u = getUserByTelegramId(uid)!;
 
-      const updatedQuestionIndex = u.currentQuestionIndex ?? 0;
-      if (updatedQuestionIndex >= test.questions.length) {
-        const totalScore = u.currentTestScore ?? 0;
-        const result = getTestResult(test, totalScore);
+  const updatedQuestionIndex = u.currentQuestionIndex ?? 0;
+  if (updatedQuestionIndex >= test.questions.length) {
+    const totalScore = u.currentTestScore ?? 0;
+    const result = getTestResult(test, totalScore);
 
-        updateUser(uid, {
-          currentTestId: null,
-          currentQuestionIndex: 0,
-          currentTestScore: 0
-        });
+    updateUser(uid, {
+      currentTestId: null,
+      currentQuestionIndex: 0,
+      currentTestScore: 0
+    });
 
-        let msg =
-          `🧾 <b>${escapeHTML(test.title)}</b>\n\n` +
-          `Твой результат: <b>${escapeHTML(result.title)}</b>\n\n` +
-          `${escapeHTML(result.text || "")}`;
+    let msg =
+      `🧾 <b>${escapeHTML(test.title)}</b>\n\n` +
+      `Твой результат: <b>${escapeHTML(result.title)}</b>\n\n` +
+      `${escapeHTML(result.text || "")}`;
 
-        if (result.advice) {
-          msg += `\n\n💡 Рекомендация:\n${escapeHTML(result.advice)}`;
-        }
+    if (result.advice) {
+      msg += `\n\n💡 Рекомендация:\n${escapeHTML(result.advice)}`;
+    }
 
         await safeSend(ctx, () =>
           ctx.replyWithHTML(msg, Markup.inlineKeyboard([
-            [Markup.button.callback("📋 Тесты", "tests_menu")],
-            [Markup.button.callback("🏠 Меню", "tests_home")]
+      [Markup.button.callback("📋 Тесты", "tests_menu")],
+      [Markup.button.callback("🏠 Меню", "tests_home")]
           ]))
         );
-      } else {
-        await sendTestQuestion(ctx, u, test);
+  } else {
+    await sendTestQuestion(ctx, u, test);
       }
     } catch (err: any) {
       console.error('[ERR] ❌ Error in answer action:', err);
       await safeSend(ctx, () => ctx.reply("Произошла ошибка, попробуй ещё раз"));
-    }
+  }
   });
 });
 
@@ -1412,16 +1412,16 @@ async function sendTestQuestion(ctx: any, user: any, test: any) {
 
   await safeSend(ctx, () =>
     ctx.replyWithHTML(msg, {
-      ...Markup.inlineKeyboard([
-        [
-          Markup.button.callback("1️⃣", `answer_${index}_1`),
-          Markup.button.callback("2️⃣", `answer_${index}_2`)
-        ],
-        [
-          Markup.button.callback("3️⃣", `answer_${index}_3`),
-          Markup.button.callback("4️⃣", `answer_${index}_4`)
-        ]
-      ])
+    ...Markup.inlineKeyboard([
+      [
+        Markup.button.callback("1️⃣", `answer_${index}_1`),
+        Markup.button.callback("2️⃣", `answer_${index}_2`)
+      ],
+      [
+        Markup.button.callback("3️⃣", `answer_${index}_3`),
+        Markup.button.callback("4️⃣", `answer_${index}_4`)
+      ]
+    ])
     })
   );
 }
@@ -1536,12 +1536,12 @@ bot.on("text", async (ctx) => {
   if (!parsed.ok) {
         await safeSend(ctx, () =>
           ctx.reply(
-            "Я не понял дату 😅\n" +
-            "Введи формат <b>ДД.ММ.ГГГГ</b>.\n" +
-            "Например: 05.03.1992",
-            { parse_mode: "HTML" }
+      "Я не понял дату 😅\n" +
+      "Введи формат <b>ДД.ММ.ГГГГ</b>.\n" +
+      "Например: 05.03.1992",
+      { parse_mode: "HTML" }
           )
-        );
+    );
     return;
   }
 
@@ -1556,12 +1556,12 @@ bot.on("text", async (ctx) => {
 
       await safeSend(ctx, () =>
         ctx.replyWithHTML(
-          `✅ Дата рождения сохранена: <b>${escapeHTML(updatedUser.birthDate!)}</b>\n` +
-          `Матрица рассчитана.\n\n` +
+    `✅ Дата рождения сохранена: <b>${escapeHTML(updatedUser.birthDate!)}</b>\n` +
+    `Матрица рассчитана.\n\n` +
           `Теперь выбери раздел 👇`,
           mainMenu
         )
-      );
+  );
 
       try {
   showMatrixSections(ctx, updatedUser);
@@ -1850,8 +1850,8 @@ cron.schedule(
               updateUser(u.telegramId, { lastLunarDay: lunarDay });
             } catch (err: any) {
               console.error(`[ERR] ❌ Error in lunar day cron for ${u.telegramId}:`, err);
-              // Обновляем lastLunarDay, чтобы не повторять попытку
-              updateUser(u.telegramId, { lastLunarDay: lunarDay });
+                // Обновляем lastLunarDay, чтобы не повторять попытку
+                updateUser(u.telegramId, { lastLunarDay: lunarDay });
             }
           } else {
             // Если описания нет, всё равно обновляем день
@@ -1961,12 +1961,12 @@ bot.start(async (ctx) => {
       // Если знака нет — показываем приветствие
       await safeSend(ctx, () =>
         ctx.reply(
-          welcomeText,
-          Markup.inlineKeyboard([
-            [Markup.button.callback("✅ Принять и продолжить", "accept_terms")],
-          ])
+      welcomeText,
+      Markup.inlineKeyboard([
+        [Markup.button.callback("✅ Принять и продолжить", "accept_terms")],
+      ])
         )
-      );
+    );
     return;
   }
 
@@ -2025,7 +2025,7 @@ bot.action("accept_terms", async (ctx) => {
       }
 
       try {
-        await ctx.editMessageText("Отлично, поехали! ✨");
+  await ctx.editMessageText("Отлично, поехали! ✨");
       } catch (e) {
         // Игнорируем ошибки редактирования
       }

@@ -110,7 +110,6 @@ app.post("/webhook/robokassa", async (req: Request, res: Response) => {
     activateSubscription(telegramId, SUBSCRIPTION_DAYS, 'webhook');
 
     // Отправляем уведомление пользователю
-    const { safeSendMessage } = await import("./utils/safeTelegram");
     await safeSendMessage(
       telegramId,
       `✅ Подписка активирована на ${SUBSCRIPTION_DAYS} дней`,
