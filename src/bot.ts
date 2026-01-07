@@ -12,6 +12,7 @@ import { getUserByTelegramId, createUserIfNotExists, updateUser, getAllUsers, Us
 import { migrateUsersFromJson } from "./db/migrate";
 import { hasActiveSubscription } from "./db/subscriptionRepository";
 import { createPayment, SUBSCRIPTION_PRICE, SUBSCRIPTION_DAYS } from "./services/robokassa";
+import { safeAnswerCallback, safeSend, safeSendMessage } from "./utils/safeTelegram";
 
 // Инициализация БД и миграция данных
 migrateUsersFromJson();
@@ -123,20 +124,22 @@ async function showPaymentMessage(ctx: any): Promise<void> {
   const payment = createPayment(telegramId);
   
   if (!payment) {
-    await ctx.reply(
-      "⚠️ Оплата временно недоступна. Попробуйте позже."
+    await safeSend(ctx, () =>
+      ctx.reply("⚠️ Оплата временно недоступна. Попробуйте позже.")
     );
     return;
   }
   
   // RoboKassa: редирект на внешний URL
-  await ctx.replyWithHTML(
-    "🔒 <b>Эта функция доступна по подписке</b>\n\n" +
-    `Подписка на ${SUBSCRIPTION_DAYS} дней — <b>${SUBSCRIPTION_PRICE} ₽</b>\n\n` +
-    "Полный доступ ко всем функциям бота.",
-    Markup.inlineKeyboard([
-      [Markup.button.url("💳 Оплатить", payment.paymentUrl!)]
-    ])
+  await safeSend(ctx, () =>
+    ctx.replyWithHTML(
+      "🔒 <b>Эта функция доступна по подписке</b>\n\n" +
+      `Подписка на ${SUBSCRIPTION_DAYS} дней — <b>${SUBSCRIPTION_PRICE} ₽</b>\n\n` +
+      "Полный доступ ко всем функциям бота.",
+      Markup.inlineKeyboard([
+        [Markup.button.url("💳 Оплатить", payment.paymentUrl!)]
+      ])
+    )
   );
   
   // Для Telegram Payments будет:
@@ -160,21 +163,17 @@ bot.use(session());
 // ============================================
 // ГЛОБАЛЬНАЯ ЗАЩИТА ОТ КРАШЕЙ
 // ============================================
-bot.catch((err, ctx) => {
+bot.catch(async (err, ctx) => {
   console.error('[ERR] ❌ Telegraf error:', err);
   console.error('   Update:', ctx.update?.update_id);
   console.error('   User:', ctx.from?.id);
   
   // Пытаемся ответить пользователю, если это возможно
   if (ctx.message || ctx.callbackQuery) {
-    try {
-      if (ctx.callbackQuery) {
-        ctx.answerCbQuery().catch(() => {});
-      }
-      ctx.reply("Произошла ошибка, попробуй ещё раз").catch(() => {});
-    } catch (e) {
-      // Игнорируем ошибки при отправке сообщения об ошибке
+    if (ctx.callbackQuery) {
+      await safeAnswerCallback(ctx, "⚠️ Ошибка");
     }
+    await safeSend(ctx, () => ctx.reply("Произошла ошибка, попробуй ещё раз"));
   }
 });
 
@@ -256,14 +255,16 @@ function sendZodiacSelection(ctx: any) {
   const rows: any[] = zodiacList.map((z) => [
     Markup.button.callback(`${z.emoji} ${z.name}`, `zodiac_${z.name.replace(/\s+/g, "_")}`)
   ]);
-  ctx.reply("🌟 <b>Выбери свой знак Зодиака:</b>", {
-    parse_mode: "HTML",
-    ...Markup.inlineKeyboard(rows),
-  });
+  safeSend(ctx, () =>
+    ctx.reply("🌟 <b>Выбери свой знак Зодиака:</b>", {
+      parse_mode: "HTML",
+      ...Markup.inlineKeyboard(rows),
+    })
+  );
 }
 
 bot.action(/zodiac_(.+)/, async (ctx) => {
-  await ctx.answerCbQuery("⏳").catch(() => {});
+  await safeAnswerCallback(ctx, "⏳");
   setImmediate(async () => {
   try {
     const signRu = ctx.match[1].replace(/_/g, " ");
@@ -319,22 +320,18 @@ bot.action(/zodiac_(.+)/, async (ctx) => {
       }
       
       // Отправляем сообщение с главным меню (reply keyboard)
-      try {
-    await ctx.replyWithHTML(
-      `<b>${getEmojiBySign(signRu)} Твой знак — ${escapeHTML(signRu)}</b>\n\n` +
-      `🔮 ${escapeHTML(text)}\n\n` +
-      `Теперь выбери свой <b>часовой пояс</b>, чтобы прогнозы приходили вовремя.`,
-      mainMenu
-    );
-    showTimezoneRegions(ctx);
-      } catch (e: any) {
-        console.error('[ERR] ❌ Error sending zodiac response:', e?.message || e);
-      }
+      await safeSend(ctx, () =>
+        ctx.replyWithHTML(
+          `<b>${getEmojiBySign(signRu)} Твой знак — ${escapeHTML(signRu)}</b>\n\n` +
+          `🔮 ${escapeHTML(text)}\n\n` +
+          `Теперь выбери свой <b>часовой пояс</b>, чтобы прогнозы приходили вовремя.`,
+          mainMenu
+        )
+      );
+      showTimezoneRegions(ctx);
     } catch (err: any) {
       console.error('[ERR] ❌ Error in zodiac action:', err);
-      try {
-        await ctx.reply("Произошла ошибка, попробуй ещё раз");
-      } catch (e) {}
+      await safeSend(ctx, () => ctx.reply("Произошла ошибка, попробуй ещё раз"));
     }
   });
 });
@@ -374,18 +371,20 @@ const timezoneRegions: Record<string, TzItem[]> = {
 bot.command("timezone", (ctx) => showTimezoneRegions(ctx));
 
 function showTimezoneRegions(ctx: any) {
-  ctx.reply("🌍 <b>Выбери свой регион:</b>", {
-    parse_mode: "HTML",
-    ...Markup.inlineKeyboard([
-      [Markup.button.callback("🇷🇺 Россия", "tz_region_Россия")],
-      [Markup.button.callback("🌍 Европа", "tz_region_Европа"), Markup.button.callback("🌏 Азия", "tz_region_Азия")],
-      [Markup.button.callback("🌎 Америка", "tz_region_Америка")],
-    ]),
-  });
+  safeSend(ctx, () =>
+    ctx.reply("🌍 <b>Выбери свой регион:</b>", {
+      parse_mode: "HTML",
+      ...Markup.inlineKeyboard([
+        [Markup.button.callback("🇷🇺 Россия", "tz_region_Россия")],
+        [Markup.button.callback("🌍 Европа", "tz_region_Европа"), Markup.button.callback("🌏 Азия", "tz_region_Азия")],
+        [Markup.button.callback("🌎 Америка", "tz_region_Америка")],
+      ]),
+    })
+  );
 }
 
 bot.action(/tz_region_(.+)/, async (ctx) => {
-  await ctx.answerCbQuery("⏳").catch(() => {});
+  await safeAnswerCallback(ctx, "⏳");
   setImmediate(async () => {
     try {
   const region = ctx.match[1];
@@ -403,62 +402,60 @@ bot.action(/tz_region_(.+)/, async (ctx) => {
   const buttons = list.map((tz: TzItem) => [Markup.button.callback(tz.name, `tz_select_${tz.id}`)]);
   buttons.push([Markup.button.callback("⬅️ Назад", "tz_back")]);
 
-  await ctx.reply(`<b>🕒 Выбери город (${escapeHTML(region)}):</b>`, {
-    parse_mode: "HTML",
-    ...Markup.inlineKeyboard(buttons),
-      });
+      await safeSend(ctx, () =>
+        ctx.reply(`<b>🕒 Выбери город (${escapeHTML(region)}):</b>`, {
+          parse_mode: "HTML",
+          ...Markup.inlineKeyboard(buttons),
+        })
+      );
     } catch (err: any) {
       console.error('[ERR] ❌ Error in tz_region action:', err);
-      try {
-        await ctx.reply("Произошла ошибка, попробуй ещё раз");
-      } catch (e) {}
+      await safeSend(ctx, () => ctx.reply("Произошла ошибка, попробуй ещё раз"));
     }
   });
 });
 
 bot.action("tz_back", async (ctx) => {
-  await ctx.answerCbQuery("⏳").catch(() => {});
+  await safeAnswerCallback(ctx, "⏳");
   setImmediate(async () => {
     try {
   showTimezoneRegions(ctx);
     } catch (err: any) {
       console.error('[ERR] ❌ Error in tz_back action:', err);
-      try {
-        await ctx.reply("Произошла ошибка, попробуй ещё раз");
-      } catch (e) {}
+      await safeSend(ctx, () => ctx.reply("Произошла ошибка, попробуй ещё раз"));
     }
   });
 });
 
 bot.action(/tz_select_(.+)/, async (ctx) => {
-  await ctx.answerCbQuery("⏳").catch(() => {});
+  await safeAnswerCallback(ctx, "⏳");
   setImmediate(async () => {
     try {
   const tz = ctx.match[1];
   const uid = ctx.from!.id;
-  let user = getUserByTelegramId(uid);
+      let user = getUserByTelegramId(uid);
       if (!user) {
-        await ctx.reply("Сначала выбери знак через /start 🔮");
+        await safeSend(ctx, () => ctx.reply("Сначала выбери знак через /start 🔮"));
         return;
       }
       
-  updateUser(uid, { timezone: tz });
-  user = ensureUserDefaults(getUserByTelegramId(uid)!);
+      updateUser(uid, { timezone: tz });
+      user = ensureUserDefaults(getUserByTelegramId(uid)!);
 
-  const local = new Date(new Date().toLocaleString("en-US", { timeZone: tz }));
-  const timeNow = local.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+      const local = new Date(new Date().toLocaleString("en-US", { timeZone: tz }));
+      const timeNow = local.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
       
       console.log(`[CB] 🌍 Timezone set: ${tz} | User: ${uid}`);
       
-  await ctx.replyWithHTML(
-    `✅ Часовой пояс установлен: <b>${escapeHTML(tz)}</b>\n🕐 Сейчас: <b>${escapeHTML(timeNow)}</b>`,
-    mainMenu
-  );
+      await safeSend(ctx, () =>
+        ctx.replyWithHTML(
+          `✅ Часовой пояс установлен: <b>${escapeHTML(tz)}</b>\n🕐 Сейчас: <b>${escapeHTML(timeNow)}</b>`,
+          mainMenu
+        )
+      );
     } catch (err: any) {
       console.error('[ERR] ❌ Error in tz_select action:', err);
-      try {
-        await ctx.reply("Произошла ошибка, попробуй ещё раз");
-      } catch (e) {}
+      await safeSend(ctx, () => ctx.reply("Произошла ошибка, попробуй ещё раз"));
     }
   });
 });
@@ -472,10 +469,8 @@ bot.command("mydaily", async (ctx) => {
   try {
     await sendDaily(ctx);
   } catch (err: any) {
-    console.error('❌ Error in /mydaily:', err);
-    try {
-      await ctx.reply("Произошла ошибка, попробуй ещё раз");
-    } catch (e) {}
+    console.error('[ERR] ❌ Error in /mydaily:', err);
+    await safeSend(ctx, () => ctx.reply("Произошла ошибка, попробуй ещё раз"));
   }
 });
 
@@ -483,21 +478,17 @@ bot.command("myweekly", async (ctx) => {
   try {
     await sendWeekly(ctx);
   } catch (err: any) {
-    console.error('❌ Error in /myweekly:', err);
-    try {
-      await ctx.reply("Произошла ошибка, попробуй ещё раз");
-    } catch (e) {}
+    console.error('[ERR] ❌ Error in /myweekly:', err);
+    await safeSend(ctx, () => ctx.reply("Произошла ошибка, попробуй ещё раз"));
   }
 });
 
-bot.command("compatibility", (ctx) => {
+bot.command("compatibility", async (ctx) => {
   try {
     askCompatibility(ctx);
   } catch (err: any) {
-    console.error('❌ Error in /compatibility:', err);
-    try {
-      ctx.reply("Произошла ошибка, попробуй ещё раз").catch(() => {});
-    } catch (e) {}
+    console.error('[ERR] ❌ Error in /compatibility:', err);
+    await safeSend(ctx, () => ctx.reply("Произошла ошибка, попробуй ещё раз"));
   }
 });
 
@@ -505,70 +496,60 @@ bot.command("moon", async (ctx) => {
   try {
     await sendMoon(ctx);
   } catch (err: any) {
-    console.error('❌ Error in /moon:', err);
-    try {
-      await ctx.reply("Произошла ошибка, попробуй ещё раз");
-    } catch (e) {}
+    console.error('[ERR] ❌ Error in /moon:', err);
+    await safeSend(ctx, () => ctx.reply("Произошла ошибка, попробуй ещё раз"));
   }
 });
 
-bot.command("settings", (ctx) => {
+bot.command("settings", async (ctx) => {
   try {
     showSettings(ctx);
   } catch (err: any) {
-    console.error('❌ Error in /settings:', err);
-    try {
-      ctx.reply("Произошла ошибка, попробуй ещё раз").catch(() => {});
-    } catch (e) {}
+    console.error('[ERR] ❌ Error in /settings:', err);
+    await safeSend(ctx, () => ctx.reply("Произошла ошибка, попробуй ещё раз"));
   }
 });
 
-bot.command("task", (ctx) => {
+bot.command("task", async (ctx) => {
   try {
-    sendDailyTask(ctx);
+    await sendDailyTask(ctx);
   } catch (err: any) {
-    console.error('❌ Error in /task:', err);
-    try {
-      ctx.reply("Произошла ошибка, попробуй ещё раз").catch(() => {});
-    } catch (e) {}
+    console.error('[ERR] ❌ Error in /task:', err);
+    await safeSend(ctx, () => ctx.reply("Произошла ошибка, попробуй ещё раз"));
   }
 });
 
-bot.command("tests", (ctx) => {
+bot.command("tests", async (ctx) => {
   try {
     showTestsMenu(ctx);
   } catch (err: any) {
-    console.error('❌ Error in /tests:', err);
-    try {
-      ctx.reply("Произошла ошибка, попробуй ещё раз").catch(() => {});
-    } catch (e) {}
+    console.error('[ERR] ❌ Error in /tests:', err);
+    await safeSend(ctx, () => ctx.reply("Произошла ошибка, попробуй ещё раз"));
   }
 });
 
-bot.command("matrix", (ctx) => {
+bot.command("matrix", async (ctx) => {
   try {
-    openMatrix(ctx);
+    await openMatrix(ctx);
   } catch (err: any) {
-    console.error('❌ Error in /matrix:', err);
-    try {
-      ctx.reply("Произошла ошибка, попробуй ещё раз").catch(() => {});
-    } catch (e) {}
+    console.error('[ERR] ❌ Error in /matrix:', err);
+    await safeSend(ctx, () => ctx.reply("Произошла ошибка, попробуй ещё раз"));
   }
 });
 
 bot.command("tariffs", async (ctx) => {
   try {
-    await ctx.replyWithHTML(
-    `💳 <b>Тарифы и оплата</b>\n\n` +
-    `Информация о тарифах и способах оплаты:\n\n` +
-    `<a href="https://docs.google.com/document/d/1Q53-21nSGnMPqVktqlfyrXHEHr9teB2Q1jyk-SGiQAw/edit?usp=sharing">Открыть документ с тарифами</a>`,
-    mainMenu
-  );
+    await safeSend(ctx, () =>
+      ctx.replyWithHTML(
+        `💳 <b>Тарифы и оплата</b>\n\n` +
+        `Информация о тарифах и способах оплаты:\n\n` +
+        `<a href="https://docs.google.com/document/d/1Q53-21nSGnMPqVktqlfyrXHEHr9teB2Q1jyk-SGiQAw/edit?usp=sharing">Открыть документ с тарифами</a>`,
+        mainMenu
+      )
+    );
   } catch (err: any) {
-    console.error('❌ Error in /tariffs:', err);
-    try {
-      await ctx.reply("Произошла ошибка, попробуй ещё раз");
-    } catch (e) {}
+    console.error('[ERR] ❌ Error in /tariffs:', err);
+    await safeSend(ctx, () => ctx.reply("Произошла ошибка, попробуй ещё раз"));
   }
 });
 
@@ -667,11 +648,13 @@ async function openMatrix(ctx: any) {
   if (!u.birthDate || !u.arcans) {
     updateUser(u.telegramId, { awaitingBirthDate: true });
 
-    ctx.replyWithHTML(
-      "🔮 <b>Матрица судьбы</b>\n\n" +
-      "Чтобы рассчитать матрицу, введи дату рождения в формате <b>ДД.ММ.ГГГГ</b>.\n\n" +
-      "Например: <code>19.10.1989</code>",
-      { parse_mode: "HTML" }
+    await safeSend(ctx, () =>
+      ctx.replyWithHTML(
+        "🔮 <b>Матрица судьбы</b>\n\n" +
+        "Чтобы рассчитать матрицу, введи дату рождения в формате <b>ДД.ММ.ГГГГ</b>.\n\n" +
+        "Например: <code>19.10.1989</code>",
+        { parse_mode: "HTML" }
+      )
     );
     return;
   }
@@ -683,35 +666,37 @@ async function openMatrix(ctx: any) {
 function showMatrixSections(ctx: any, u: any) {
   const bdate = u.birthDate ? String(u.birthDate) : "не указана";
 
-  ctx.replyWithHTML(
-    `🔮 <b>Твоя матрица судьбы</b>\n` +
-    `Дата рождения: <b>${escapeHTML(bdate)}</b>\n\n` +
-    `Выбери раздел, который хочешь посмотреть:`,
-    Markup.inlineKeyboard([
-      [Markup.button.callback("🧬 Общая характеристика", "matrix_general")],
-      [Markup.button.callback("❤️ Отношения", "matrix_relations")],
-      [Markup.button.callback("💰 Деньги", "matrix_money")],
-      [Markup.button.callback("🧭 Предназначение", "matrix_purpose")],
-      [Markup.button.callback("⚠️ Слабые зоны", "matrix_weak")],
-      [Markup.button.callback("✨ Рекомендации", "matrix_reco")]
-    ])
+  safeSend(ctx, () =>
+    ctx.replyWithHTML(
+      `🔮 <b>Твоя матрица судьбы</b>\n` +
+      `Дата рождения: <b>${escapeHTML(bdate)}</b>\n\n` +
+      `Выбери раздел, который хочешь посмотреть:`,
+      Markup.inlineKeyboard([
+        [Markup.button.callback("🧬 Общая характеристика", "matrix_general")],
+        [Markup.button.callback("❤️ Отношения", "matrix_relations")],
+        [Markup.button.callback("💰 Деньги", "matrix_money")],
+        [Markup.button.callback("🧭 Предназначение", "matrix_purpose")],
+        [Markup.button.callback("⚠️ Слабые зоны", "matrix_weak")],
+        [Markup.button.callback("✨ Рекомендации", "matrix_reco")]
+      ])
+    )
   );
 }
 
 bot.action("matrix_general", async (ctx) => {
-  await ctx.answerCbQuery("⏳").catch(() => {});
+  await safeAnswerCallback(ctx, "⏳");
   setImmediate(async () => {
     try {
       await sendMatrixSection(ctx, "general");
     } catch (err: any) {
       console.error('[ERR] ❌ Error in matrix_general:', err);
-      try { await ctx.reply("Произошла ошибка, попробуй ещё раз"); } catch (e) {}
+      await safeSend(ctx, () => ctx.reply("Произошла ошибка, попробуй ещё раз"));
     }
   });
 });
 
 bot.action("matrix_relations", async (ctx) => {
-  await ctx.answerCbQuery("⏳").catch(() => {});
+  await safeAnswerCallback(ctx, "⏳");
   setImmediate(async () => {
     try {
       await sendMatrixSection(ctx, "relations");
@@ -723,7 +708,7 @@ bot.action("matrix_relations", async (ctx) => {
 });
 
 bot.action("matrix_money", async (ctx) => {
-  await ctx.answerCbQuery("⏳").catch(() => {});
+  await safeAnswerCallback(ctx, "⏳");
   setImmediate(async () => {
     try {
       await sendMatrixSection(ctx, "money");
@@ -735,7 +720,7 @@ bot.action("matrix_money", async (ctx) => {
 });
 
 bot.action("matrix_purpose", async (ctx) => {
-  await ctx.answerCbQuery("⏳").catch(() => {});
+  await safeAnswerCallback(ctx, "⏳");
   setImmediate(async () => {
     try {
       await sendMatrixSection(ctx, "purpose");
@@ -747,7 +732,7 @@ bot.action("matrix_purpose", async (ctx) => {
 });
 
 bot.action("matrix_weak", async (ctx) => {
-  await ctx.answerCbQuery("⏳").catch(() => {});
+  await safeAnswerCallback(ctx, "⏳");
   setImmediate(async () => {
     try {
       await sendMatrixSection(ctx, "weak");
@@ -759,7 +744,7 @@ bot.action("matrix_weak", async (ctx) => {
 });
 
 bot.action("matrix_reco", async (ctx) => {
-  await ctx.answerCbQuery("⏳").catch(() => {});
+  await safeAnswerCallback(ctx, "⏳");
   setImmediate(async () => {
     try {
       await sendMatrixSection(ctx, "recommendations");
@@ -771,7 +756,7 @@ bot.action("matrix_reco", async (ctx) => {
 });
 
 bot.action("matrix_back", async (ctx) => {
-  await ctx.answerCbQuery("⏳").catch(() => {});
+  await safeAnswerCallback(ctx, "⏳");
   setImmediate(async () => {
     try {
       const u = getUserByTelegramId(ctx.from!.id);
@@ -795,16 +780,19 @@ async function sendMatrixSection(ctx: any, section: string) {
 
   if (!u.birthDate || !u.arcans) {
     updateUser(u.telegramId, { awaitingBirthDate: true });
-    await ctx.replyWithHTML(
-      "Чтобы показать этот раздел, мне нужна твоя дата рождения.\n" +
-      "Введи её в формате <b>ДД.ММ.ГГГГ</b>."
+    await safeSend(ctx, () =>
+      ctx.replyWithHTML(
+        "Чтобы показать этот раздел, мне нужна твоя дата рождения.\n" +
+        "Введи её в формате <b>ДД.ММ.ГГГГ</b>."
+      )
     );
     return;
   }
 
   // Получаем номер аркана
   if (!u.arcans) {
-    return ctx.reply("Матрица не рассчитана.");
+    await safeSend(ctx, () => ctx.reply("Матрица не рассчитана."));
+    return;
   }
   let arcanNum: number | null = null;
   if (section === "general") arcanNum = u.arcans.main;
@@ -820,7 +808,8 @@ async function sendMatrixSection(ctx: any, section: string) {
   const arcanData = matrixData[key];
 
   if (!arcanData) {
-    return ctx.reply("Нет данных по этому аркану.");
+    await safeSend(ctx, () => ctx.reply("Нет данных по этому аркану."));
+    return;
   }
 
   const field = MATRIX_SECTION_MAP[section]; // general / love / money / purpose / shadow / advice
@@ -835,11 +824,13 @@ async function sendMatrixSection(ctx: any, section: string) {
     recommendations: "✨ Рекомендации"
   };
 
-  await ctx.replyWithHTML(
-    `${titles[section]}\n\n${escapeHTML(text)}`,
-    Markup.inlineKeyboard([
-      [Markup.button.callback("⬅️ Назад", "matrix_back")],
-    ])
+  await safeSend(ctx, () =>
+    ctx.replyWithHTML(
+      `${titles[section]}\n\n${escapeHTML(text)}`,
+      Markup.inlineKeyboard([
+        [Markup.button.callback("⬅️ Назад", "matrix_back")],
+      ])
+    )
   );
 }
 
@@ -854,9 +845,11 @@ async function sendDaily(ctx: any) {
   const signEn = zodiacMap[u.sign];
   const text = getDailyText(signEn, u);
 
-  await ctx.replyWithHTML(
-    `🌞 <b>Прогноз на сегодня для ${escapeHTML(u.sign)}:</b>\n\n${escapeHTML(text)}`,
-    mainMenu
+  await safeSend(ctx, () =>
+    ctx.replyWithHTML(
+      `🌞 <b>Прогноз на сегодня для ${escapeHTML(u.sign || "")}:</b>\n\n${escapeHTML(text)}`,
+      mainMenu
+    )
   );
 }
 
@@ -873,9 +866,11 @@ async function sendWeekly(ctx: any) {
   const signEn = zodiacMap[u.sign];
   const text = getWeeklyText(signEn, u);
 
-  await ctx.replyWithHTML(
-    `🪐 <b>Прогноз на неделю для ${escapeHTML(u.sign)}:</b>\n\n${escapeHTML(text)}`,
-    mainMenu
+  await safeSend(ctx, () =>
+    ctx.replyWithHTML(
+      `🪐 <b>Прогноз на неделю для ${escapeHTML(u.sign || "")}:</b>\n\n${escapeHTML(text)}`,
+      mainMenu
+    )
   );
 }
 
@@ -891,14 +886,16 @@ function askCompatibility(ctx: any) {
     Markup.button.callback(`${z.emoji} ${z.name}`, `compat_${z.name.replace(/\s+/g, "_")}`)
   ]);
 
-  ctx.reply("💞 <b>Выбери знак партнёра:</b>", {
-    parse_mode: "HTML",
-    ...Markup.inlineKeyboard(rows),
-  });
+  safeSend(ctx, () =>
+    ctx.reply("💞 <b>Выбери знак партнёра:</b>", {
+      parse_mode: "HTML",
+      ...Markup.inlineKeyboard(rows),
+    })
+  );
 }
 
 bot.action(/compat_(.+)/, async (ctx) => {
-  await ctx.answerCbQuery("⏳").catch(() => {});
+  await safeAnswerCallback(ctx, "⏳");
   setImmediate(async () => {
     try {
       const partnerRu = ctx.match[1].replace(/_/g, " ");
@@ -919,13 +916,15 @@ bot.action(/compat_(.+)/, async (ctx) => {
 
       const text = match ? match.text : "Информация о совместимости не найдена 😅";
 
-      await ctx.replyWithHTML(
-        `💞 <b>Совместимость ${escapeHTML(u.sign)} + ${escapeHTML(partnerRu)}:</b>\n\n${escapeHTML(text)}`,
-        mainMenu
+      await safeSend(ctx, () =>
+        ctx.replyWithHTML(
+          `💞 <b>Совместимость ${escapeHTML(u.sign || "")} + ${escapeHTML(partnerRu)}:</b>\n\n${escapeHTML(text)}`,
+          mainMenu
+        )
       );
     } catch (err: any) {
       console.error('[ERR] ❌ Error in compat action:', err);
-      try { await ctx.reply("Произошла ошибка, попробуй ещё раз"); } catch (e) {}
+      await safeSend(ctx, () => ctx.reply("Произошла ошибка, попробуй ещё раз"));
     }
   });
 });
@@ -939,13 +938,15 @@ async function sendMoon(ctx: any) {
     const lunarDay = getLunarDay();
 
     if (!Array.isArray(moon)) {
-      return ctx.reply("⚠️ Ошибка данных о Луне 🌙");
+      await safeSend(ctx, () => ctx.reply("⚠️ Ошибка данных о Луне 🌙"));
+      return;
     }
 
     const desc: any = moon.find((d: any) => Number(d.day) === Number(lunarDay));
 
     if (!desc) {
-      return ctx.reply("🌙 Информация о лунном дне временно недоступна 😅");
+      await safeSend(ctx, () => ctx.reply("🌙 Информация о лунном дне временно недоступна 😅"));
+      return;
     }
 
     desc.name = desc.name || `Лунный день ${lunarDay}`;
@@ -980,11 +981,11 @@ async function sendMoon(ctx: any) {
 💡 <b>Совет:</b> ${escapeHTML(desc.advice)}
 `;
 
-    await ctx.replyWithHTML(msg, mainMenu);
+    await safeSend(ctx, () => ctx.replyWithHTML(msg, mainMenu));
 
   } catch (err) {
-    console.error("Ошибка в /moon:", err);
-    ctx.reply("Ошибка загрузки данных о Луне 🌙");
+    console.error("[ERR] Ошибка в /moon:", err);
+    await safeSend(ctx, () => ctx.reply("Ошибка загрузки данных о Луне 🌙"));
   }
 }
 
@@ -1008,18 +1009,20 @@ function showSettings(ctx: any) {
     [{ text: "💳 Тарифы и оплата", url: "https://docs.google.com/document/d/1Q53-21nSGnMPqVktqlfyrXHEHr9teB2Q1jyk-SGiQAw/edit?usp=sharing" }]
   ];
 
-  ctx.replyWithHTML(
-    `⚙️ <b>Текущие настройки</b>\n\n` +
-    `🌍 Часовой пояс: <b>${escapeHTML(tzText)}</b>\n` +
-    `🌞 Daily: <b>${u.dailyHour}:00</b>\n` +
-    `🪐 Weekly: <b>${u.weeklyDow}</b> день, <b>${u.weeklyHour}:00</b>\n` +
-    `📅 Дата рождения: <b>${escapeHTML(bday)}</b>`,
-    Markup.inlineKeyboard(keyboard)
+  safeSend(ctx, () =>
+    ctx.replyWithHTML(
+      `⚙️ <b>Текущие настройки</b>\n\n` +
+      `🌍 Часовой пояс: <b>${escapeHTML(tzText)}</b>\n` +
+      `🌞 Daily: <b>${u.dailyHour}:00</b>\n` +
+      `🪐 Weekly: <b>${u.weeklyDow}</b> день, <b>${u.weeklyHour}:00</b>\n` +
+      `📅 Дата рождения: <b>${escapeHTML(bday)}</b>`,
+      Markup.inlineKeyboard(keyboard)
+    )
   );
 }
 
 bot.action("settings_tz", async (ctx) => {
-  await ctx.answerCbQuery("⏳").catch(() => {});
+  await safeAnswerCallback(ctx, "⏳");
   setImmediate(async () => {
     try {
       showTimezoneRegions(ctx);
@@ -1031,26 +1034,28 @@ bot.action("settings_tz", async (ctx) => {
 });
 
 bot.action("settings_daily", async (ctx) => {
-  await ctx.answerCbQuery("⏳").catch(() => {});
+  await safeAnswerCallback(ctx, "⏳");
   setImmediate(async () => {
     try {
-      await ctx.replyWithHTML(
-        "⏰ <b>Выбери время ежедневного уведомления</b>",
-        Markup.inlineKeyboard([
-          [Markup.button.callback("07:00", "daily_7"), Markup.button.callback("09:00", "daily_9")],
-          [Markup.button.callback("11:00", "daily_11"), Markup.button.callback("18:00", "daily_18")],
-          [Markup.button.callback("⬅️ Назад", "settings_back")],
-        ])
+      await safeSend(ctx, () =>
+        ctx.replyWithHTML(
+          "⏰ <b>Выбери время ежедневного уведомления</b>",
+          Markup.inlineKeyboard([
+            [Markup.button.callback("07:00", "daily_7"), Markup.button.callback("09:00", "daily_9")],
+            [Markup.button.callback("11:00", "daily_11"), Markup.button.callback("18:00", "daily_18")],
+            [Markup.button.callback("⬅️ Назад", "settings_back")],
+          ])
+        )
       );
     } catch (err: any) {
       console.error('[ERR] ❌ Error in settings_daily:', err);
-      try { await ctx.reply("Произошла ошибка, попробуй ещё раз"); } catch (e) {}
+      await safeSend(ctx, () => ctx.reply("Произошла ошибка, попробуй ещё раз"));
     }
   });
 });
 
 bot.action(/daily_(\d+)/, async (ctx) => {
-  await ctx.answerCbQuery("⏳").catch(() => {});
+  await safeAnswerCallback(ctx, "⏳");
   setImmediate(async () => {
     try {
       const hour = Number(ctx.match[1]);
@@ -1061,65 +1066,67 @@ bot.action(/daily_(\d+)/, async (ctx) => {
       }
       ensureUserDefaults(u);
       updateUser(ctx.from!.id, { dailyHour: hour });
-      await ctx.replyWithHTML(`✅ Установлено: <b>${hour}:00</b>`, mainMenu);
+      await safeSend(ctx, () => ctx.replyWithHTML(`✅ Установлено: <b>${hour}:00</b>`, mainMenu));
     } catch (err: any) {
       console.error('[ERR] ❌ Error in daily action:', err);
-      try { await ctx.reply("Произошла ошибка, попробуй ещё раз"); } catch (e) {}
+      await safeSend(ctx, () => ctx.reply("Произошла ошибка, попробуй ещё раз"));
     }
   });
 });
 
 bot.action("settings_weekly", async (ctx) => {
-  await ctx.answerCbQuery("⏳").catch(() => {});
+  await safeAnswerCallback(ctx, "⏳");
   setImmediate(async () => {
     try {
-      await ctx.replyWithHTML(
-        "🗓 <b>Выбери день и время еженедельного уведомления</b>",
-        Markup.inlineKeyboard([
-          [Markup.button.callback("Вс 21:00", "weekly_0_21"), Markup.button.callback("Пн 09:00", "weekly_1_9")],
-          [Markup.button.callback("Пт 18:00", "weekly_5_18")],
-          [Markup.button.callback("⬅️ Назад", "settings_back")],
-        ])
+      await safeSend(ctx, () =>
+        ctx.replyWithHTML(
+          "🗓 <b>Выбери день и время еженедельного уведомления</b>",
+          Markup.inlineKeyboard([
+            [Markup.button.callback("Вс 21:00", "weekly_0_21"), Markup.button.callback("Пн 09:00", "weekly_1_9")],
+            [Markup.button.callback("Пт 18:00", "weekly_5_18")],
+            [Markup.button.callback("⬅️ Назад", "settings_back")],
+          ])
+        )
       );
     } catch (err: any) {
       console.error('[ERR] ❌ Error in settings_weekly:', err);
-      try { await ctx.reply("Произошла ошибка, попробуй ещё раз"); } catch (e) {}
+      await safeSend(ctx, () => ctx.reply("Произошла ошибка, попробуй ещё раз"));
     }
   });
 });
 
 bot.action("settings_birthdate", async (ctx) => {
-  await ctx.answerCbQuery("⏳").catch(() => {});
+  await safeAnswerCallback(ctx, "⏳");
   setImmediate(async () => {
     try {
       const uid = ctx.from!.id;
       const u = getUserByTelegramId(uid);
 
       if (!u) {
-        await ctx.reply("Сначала выбери знак 🌟", mainMenu);
+        await safeSend(ctx, () => ctx.reply("Сначала выбери знак 🌟", mainMenu));
         return;
       }
 
       ensureUserDefaults(u);
       updateUser(uid, { awaitingBirthDate: true });
 
-      await ctx.replyWithHTML(
-        "📅 <b>Изменение даты рождения</b>\n\n" +
-        "Введи дату в формате <b>ДД.ММ.ГГГГ</b>\n" +
-        "Например: <code>19.10.1989</code>",
-        { parse_mode: "HTML" }
+      await safeSend(ctx, () =>
+        ctx.replyWithHTML(
+          "📅 <b>Изменение даты рождения</b>\n\n" +
+          "Введи дату в формате <b>ДД.ММ.ГГГГ</b>\n" +
+          "Например: <code>19.10.1989</code>",
+          { parse_mode: "HTML" }
+        )
       );
     } catch (err: any) {
       console.error('[ERR] ❌ Error in settings_birthdate:', err);
-      try {
-        await ctx.reply("Произошла ошибка, попробуй ещё раз");
-      } catch (e) {}
+      await safeSend(ctx, () => ctx.reply("Произошла ошибка, попробуй ещё раз"));
     }
   });
 });
 
 bot.action(/weekly_(\d+)_(\d+)/, async (ctx) => {
-  await ctx.answerCbQuery("⏳").catch(() => {});
+  await safeAnswerCallback(ctx, "⏳");
   setImmediate(async () => {
     try {
       const dow = Number(ctx.match[1]);
@@ -1134,22 +1141,22 @@ bot.action(/weekly_(\d+)_(\d+)/, async (ctx) => {
       ensureUserDefaults(u);
       updateUser(ctx.from!.id, { weeklyDow: dow, weeklyHour: hour });
 
-      await ctx.replyWithHTML(`✅ Установлено: <b>${dow}</b> день, <b>${hour}:00</b>`, mainMenu);
+      await safeSend(ctx, () => ctx.replyWithHTML(`✅ Установлено: <b>${dow}</b> день, <b>${hour}:00</b>`, mainMenu));
     } catch (err: any) {
       console.error('[ERR] ❌ Error in weekly action:', err);
-      try { await ctx.reply("Произошла ошибка, попробуй ещё раз"); } catch (e) {}
+      await safeSend(ctx, () => ctx.reply("Произошла ошибка, попробуй ещё раз"));
     }
   });
 });
 
 bot.action("settings_back", async (ctx) => {
-  await ctx.answerCbQuery("⏳").catch(() => {});
+  await safeAnswerCallback(ctx, "⏳");
   setImmediate(async () => {
     try {
       showSettings(ctx);
     } catch (err: any) {
       console.error('[ERR] ❌ Error in settings_back:', err);
-      try { await ctx.reply("Произошла ошибка, попробуй ещё раз"); } catch (e) {}
+      await safeSend(ctx, () => ctx.reply("Произошла ошибка, попробуй ещё раз"));
     }
   });
 });
@@ -1164,7 +1171,8 @@ async function sendDailyTask(ctx: any) {
   ensureUserDefaults(u);
 
   if (!Array.isArray(dailyTasks) || dailyTasks.length === 0) {
-    return ctx.reply("Пока заданий нет 💫", mainMenu);
+    await safeSend(ctx, () => ctx.reply("Пока заданий нет 💫", mainMenu));
+    return;
   }
 
   const taskIndex = u.dailyTaskIndex ?? 0;
@@ -1175,9 +1183,11 @@ async function sendDailyTask(ctx: any) {
   const newIndex = (taskIndex + 1) % dailyTasks.length;
   updateUser(u.telegramId, { dailyTaskIndex: newIndex });
 
-  await ctx.replyWithHTML(
-    `🎯 <b>Задание дня</b>\n\n${escapeHTML(text)}`,
-    mainMenu
+  await safeSend(ctx, () =>
+    ctx.replyWithHTML(
+      `🎯 <b>Задание дня</b>\n\n${escapeHTML(text)}`,
+      mainMenu
+    )
   );
 }
 
@@ -1187,7 +1197,8 @@ async function sendDailyTask(ctx: any) {
 
 function showTestsMenu(ctx: any) {
   if (!Array.isArray(testsList) || testsList.length === 0) {
-    return ctx.reply("Пока нет тестов 💫", mainMenu);
+    safeSend(ctx, () => ctx.reply("Пока нет тестов 💫", mainMenu));
+    return;
   }
 
   const buttons = testsList.map((t: any) => [
@@ -1196,17 +1207,19 @@ function showTestsMenu(ctx: any) {
 
   buttons.push([Markup.button.callback("🏠 Главное меню", "tests_home")]);
 
-  ctx.replyWithHTML(
-    "📋 <b>Тесты</b>\n\nВыбери тест:",
-    Markup.inlineKeyboard(buttons)
+  safeSend(ctx, () =>
+    ctx.replyWithHTML(
+      "📋 <b>Тесты</b>\n\nВыбери тест:",
+      Markup.inlineKeyboard(buttons)
+    )
   );
 }
 
 bot.action("tests_home", async (ctx) => {
-  await ctx.answerCbQuery("⏳").catch(() => {});
+  await safeAnswerCallback(ctx, "⏳");
   setImmediate(async () => {
     try {
-      await ctx.reply("Главное меню:", mainMenu);
+      await safeSend(ctx, () => ctx.reply("Главное меню:", mainMenu));
     } catch (err: any) {
       console.error('[ERR] ❌ Error in tests_home:', err);
     }
@@ -1214,26 +1227,26 @@ bot.action("tests_home", async (ctx) => {
 });
 
 bot.action("tests_menu", async (ctx) => {
-  await ctx.answerCbQuery("⏳").catch(() => {});
+  await safeAnswerCallback(ctx, "⏳");
   setImmediate(async () => {
     try {
       showTestsMenu(ctx);
     } catch (err: any) {
       console.error('[ERR] ❌ Error in tests_menu:', err);
-      try { await ctx.reply("Произошла ошибка, попробуй ещё раз"); } catch (e) {}
+      await safeSend(ctx, () => ctx.reply("Произошла ошибка, попробуй ещё раз"));
     }
   });
 });
 
 bot.action(/test_open_(.+)/, async (ctx) => {
-  await ctx.answerCbQuery("⏳").catch(() => {});
+  await safeAnswerCallback(ctx, "⏳");
   setImmediate(async () => {
     try {
       const id = ctx.match[1];
       const test = loadTestById(id);
 
       if (!test || !Array.isArray(test.questions) || test.questions.length === 0) {
-        await ctx.reply("Не удалось загрузить тест.");
+        await safeSend(ctx, () => ctx.reply("Не удалось загрузить тест."));
         return;
       }
 
@@ -1245,20 +1258,22 @@ bot.action(/test_open_(.+)/, async (ctx) => {
         `🧭 <b>${total} вопросов</b>\n` +
         `Отвечай честно — нет правильных ответов.`;
 
-      await ctx.replyWithHTML(intro, Markup.inlineKeyboard([
-        [Markup.button.callback("▶️ Начать", `test_start_${id}`)],
-        [Markup.button.callback("📋 Назад", "tests_menu")],
-        [Markup.button.callback("🏠 Меню", "tests_home")]
-      ]));
+      await safeSend(ctx, () =>
+        ctx.replyWithHTML(intro, Markup.inlineKeyboard([
+          [Markup.button.callback("▶️ Начать", `test_start_${id}`)],
+          [Markup.button.callback("📋 Назад", "tests_menu")],
+          [Markup.button.callback("🏠 Меню", "tests_home")]
+        ]))
+      );
     } catch (err: any) {
       console.error('[ERR] ❌ Error in test_open:', err);
-      try { await ctx.reply("Произошла ошибка, попробуй ещё раз"); } catch (e) {}
+      await safeSend(ctx, () => ctx.reply("Произошла ошибка, попробуй ещё раз"));
     }
   });
 });
 
 bot.action(/test_start_(.+)/, async (ctx) => {
-  await ctx.answerCbQuery("⏳").catch(() => {});
+  await safeAnswerCallback(ctx, "⏳");
   setImmediate(async () => {
     try {
       const id = ctx.match[1];
@@ -1273,7 +1288,7 @@ bot.action(/test_start_(.+)/, async (ctx) => {
 
       const test = loadTestById(id);
       if (!test || !Array.isArray(test.questions)) {
-        await ctx.reply("Ошибка загрузки теста.");
+        await safeSend(ctx, () => ctx.reply("Ошибка загрузки теста."));
         return;
       }
 
@@ -1287,13 +1302,13 @@ bot.action(/test_start_(.+)/, async (ctx) => {
       await sendTestQuestion(ctx, u, test);
     } catch (err: any) {
       console.error('[ERR] ❌ Error in test_start:', err);
-      try { await ctx.reply("Произошла ошибка, попробуй ещё раз"); } catch (e) {}
+      await safeSend(ctx, () => ctx.reply("Произошла ошибка, попробуй ещё раз"));
     }
   });
 });
 
 bot.action(/answer_(\d+)_(\d+)/, async (ctx) => {
-  await ctx.answerCbQuery("⏳").catch(() => {});
+  await safeAnswerCallback(ctx, "⏳");
   setImmediate(async () => {
     try {
       const qIndex = Number(ctx.match[1]);
@@ -1349,16 +1364,18 @@ bot.action(/answer_(\d+)_(\d+)/, async (ctx) => {
           msg += `\n\n💡 Рекомендация:\n${escapeHTML(result.advice)}`;
         }
 
-        await ctx.replyWithHTML(msg, Markup.inlineKeyboard([
-          [Markup.button.callback("📋 Тесты", "tests_menu")],
-          [Markup.button.callback("🏠 Меню", "tests_home")]
-        ]));
+        await safeSend(ctx, () =>
+          ctx.replyWithHTML(msg, Markup.inlineKeyboard([
+            [Markup.button.callback("📋 Тесты", "tests_menu")],
+            [Markup.button.callback("🏠 Меню", "tests_home")]
+          ]))
+        );
       } else {
         await sendTestQuestion(ctx, u, test);
       }
     } catch (err: any) {
       console.error('[ERR] ❌ Error in answer action:', err);
-      try { await ctx.reply("Произошла ошибка, попробуй ещё раз"); } catch (e) {}
+      await safeSend(ctx, () => ctx.reply("Произошла ошибка, попробуй ещё раз"));
     }
   });
 });
@@ -1393,18 +1410,20 @@ async function sendTestQuestion(ctx: any, user: any, test: any) {
     `${escapeHTML(q.text)}\n\n` +
     answersText;
 
-  await ctx.replyWithHTML(msg, {
-    ...Markup.inlineKeyboard([
-      [
-        Markup.button.callback("1️⃣", `answer_${index}_1`),
-        Markup.button.callback("2️⃣", `answer_${index}_2`)
-      ],
-      [
-        Markup.button.callback("3️⃣", `answer_${index}_3`),
-        Markup.button.callback("4️⃣", `answer_${index}_4`)
-      ]
-    ])
-  });
+  await safeSend(ctx, () =>
+    ctx.replyWithHTML(msg, {
+      ...Markup.inlineKeyboard([
+        [
+          Markup.button.callback("1️⃣", `answer_${index}_1`),
+          Markup.button.callback("2️⃣", `answer_${index}_2`)
+        ],
+        [
+          Markup.button.callback("3️⃣", `answer_${index}_3`),
+          Markup.button.callback("4️⃣", `answer_${index}_4`)
+        ]
+      ])
+    })
+  );
 }
 
 /* =========================
@@ -1515,16 +1534,14 @@ bot.on("text", async (ctx) => {
   const parsed = parseBirthDate(raw);
 
   if (!parsed.ok) {
-        try {
-    await ctx.reply(
-      "Я не понял дату 😅\n" +
-      "Введи формат <b>ДД.ММ.ГГГГ</b>.\n" +
-      "Например: 05.03.1992",
-      { parse_mode: "HTML" }
-    );
-        } catch (e) {
-          console.error('❌ Error sending date format message:', e);
-        }
+        await safeSend(ctx, () =>
+          ctx.reply(
+            "Я не понял дату 😅\n" +
+            "Введи формат <b>ДД.ММ.ГГГГ</b>.\n" +
+            "Например: 05.03.1992",
+            { parse_mode: "HTML" }
+          )
+        );
     return;
   }
 
@@ -1537,16 +1554,14 @@ bot.on("text", async (ctx) => {
   });
   const updatedUser = getUserByTelegramId(uid)!;
 
-      try {
-  await ctx.replyWithHTML(
-    `✅ Дата рождения сохранена: <b>${escapeHTML(updatedUser.birthDate!)}</b>\n` +
-    `Матрица рассчитана.\n\n` +
+      await safeSend(ctx, () =>
+        ctx.replyWithHTML(
+          `✅ Дата рождения сохранена: <b>${escapeHTML(updatedUser.birthDate!)}</b>\n` +
+          `Матрица рассчитана.\n\n` +
           `Теперь выбери раздел 👇`,
           mainMenu
-  );
-      } catch (e) {
-        console.error('❌ Error sending birthdate confirmation:', e);
-      }
+        )
+      );
 
       try {
   showMatrixSections(ctx, updatedUser);
@@ -1564,9 +1579,7 @@ bot.on("text", async (ctx) => {
         await sendDaily(ctx);
       } catch (err: any) {
         console.error('❌ Error in "Прогноз на сегодня":', err);
-        try {
-          await ctx.reply("Произошла ошибка, попробуй ещё раз");
-        } catch (e) {}
+        await safeSend(ctx, () => ctx.reply("Произошла ошибка, попробуй ещё раз"));
       }
       return;
     }
@@ -1575,10 +1588,8 @@ bot.on("text", async (ctx) => {
       try {
         await sendWeekly(ctx);
       } catch (err: any) {
-        console.error('❌ Error in "Прогноз на неделю":', err);
-        try {
-          await ctx.reply("Произошла ошибка, попробуй ещё раз");
-        } catch (e) {}
+        console.error('[ERR] ❌ Error in "Прогноз на неделю":', err);
+        await safeSend(ctx, () => ctx.reply("Произошла ошибка, попробуй ещё раз"));
       }
       return;
     }
@@ -1587,10 +1598,8 @@ bot.on("text", async (ctx) => {
       try {
         await sendMoon(ctx);
       } catch (err: any) {
-        console.error('❌ Error in "Лунный день":', err);
-        try {
-          await ctx.reply("Произошла ошибка, попробуй ещё раз");
-        } catch (e) {}
+        console.error('[ERR] ❌ Error in "Лунный день":', err);
+        await safeSend(ctx, () => ctx.reply("Произошла ошибка, попробуй ещё раз"));
       }
       return;
     }
@@ -1599,10 +1608,8 @@ bot.on("text", async (ctx) => {
       try {
         askCompatibility(ctx);
       } catch (err: any) {
-        console.error('❌ Error in "Совместимость":', err);
-        try {
-          await ctx.reply("Произошла ошибка, попробуй ещё раз");
-        } catch (e) {}
+        console.error('[ERR] ❌ Error in "Совместимость":', err);
+        await safeSend(ctx, () => ctx.reply("Произошла ошибка, попробуй ещё раз"));
       }
       return;
     }
@@ -1611,10 +1618,8 @@ bot.on("text", async (ctx) => {
       try {
         await sendDailyTask(ctx);
       } catch (err: any) {
-        console.error('❌ Error in "Задание дня":', err);
-        try {
-          await ctx.reply("Произошла ошибка, попробуй ещё раз");
-        } catch (e) {}
+        console.error('[ERR] ❌ Error in "Задание дня":', err);
+        await safeSend(ctx, () => ctx.reply("Произошла ошибка, попробуй ещё раз"));
       }
       return;
     }
@@ -1623,10 +1628,8 @@ bot.on("text", async (ctx) => {
       try {
         showTestsMenu(ctx);
       } catch (err: any) {
-        console.error('❌ Error in "Тесты":', err);
-        try {
-          await ctx.reply("Произошла ошибка, попробуй ещё раз");
-        } catch (e) {}
+        console.error('[ERR] ❌ Error in "Тесты":', err);
+        await safeSend(ctx, () => ctx.reply("Произошла ошибка, попробуй ещё раз"));
       }
       return;
     }
@@ -1635,10 +1638,8 @@ bot.on("text", async (ctx) => {
       try {
         await openMatrix(ctx);
       } catch (err: any) {
-        console.error('❌ Error in "Матрица судьбы":', err);
-        try {
-          await ctx.reply("Произошла ошибка, попробуй ещё раз");
-        } catch (e) {}
+        console.error('[ERR] ❌ Error in "Матрица судьбы":', err);
+        await safeSend(ctx, () => ctx.reply("Произошла ошибка, попробуй ещё раз"));
       }
       return;
     }
@@ -1647,25 +1648,17 @@ bot.on("text", async (ctx) => {
       try {
         showSettings(ctx);
       } catch (err: any) {
-        console.error('❌ Error in "Настройки":', err);
-        try {
-          await ctx.reply("Произошла ошибка, попробуй ещё раз");
-        } catch (e) {}
+        console.error('[ERR] ❌ Error in "Настройки":', err);
+        await safeSend(ctx, () => ctx.reply("Произошла ошибка, попробуй ещё раз"));
       }
       return;
     }
 
     // d) ЕСЛИ ничего не совпало — fallback
-    try {
-      await ctx.reply("Выбери раздел из меню 👇", mainMenu);
-    } catch (e) {
-      console.error('❌ Error sending fallback message:', e);
-    }
+    await safeSend(ctx, () => ctx.reply("Выбери раздел из меню 👇", mainMenu));
   } catch (err: any) {
-    console.error('❌ Error in text router:', err);
-    try {
-      await ctx.reply("Произошла ошибка, попробуй ещё раз");
-    } catch (e) {}
+    console.error('[ERR] ❌ Error in text router:', err);
+    await safeSend(ctx, () => ctx.reply("Произошла ошибка, попробуй ещё раз"));
   }
 });
 
@@ -1812,17 +1805,13 @@ cron.schedule(
           try {
             const signEn = zodiacMap[u.sign];
             const text = getDailyText(signEn, u);
-            await bot.telegram.sendMessage(
+            await safeSendMessage(
               u.telegramId,
-              `🌞 Прогноз на сегодня для ${u.sign}:\n\n${text}`
+              `🌞 Прогноз на сегодня для ${u.sign}:\n\n${text}`,
+              bot
             );
           } catch (err: any) {
-            if (err?.response?.error_code === 403) {
-              console.warn(`⚠️ User ${u.telegramId} blocked the bot (daily forecast)`);
-              // Продолжаем работу, не ломаем процесс
-            } else {
-              console.error(`❌ Error sending daily forecast to ${u.telegramId}:`, err?.message || err);
-            }
+            console.error(`[ERR] ❌ Error in daily forecast cron for ${u.telegramId}:`, err);
           }
         }
 
@@ -1831,17 +1820,13 @@ cron.schedule(
           try {
             const signEn = zodiacMap[u.sign];
             const text = getWeeklyText(signEn, u);
-            await bot.telegram.sendMessage(
+            await safeSendMessage(
               u.telegramId,
-              `🪐 Прогноз на неделю для ${u.sign}:\n\n${text}`
+              `🪐 Прогноз на неделю для ${u.sign}:\n\n${text}`,
+              bot
             );
           } catch (err: any) {
-            if (err?.response?.error_code === 403) {
-              console.warn(`⚠️ User ${u.telegramId} blocked the bot (weekly forecast)`);
-              // Продолжаем работу, не ломаем процесс
-            } else {
-              console.error(`❌ Error sending weekly forecast to ${u.telegramId}:`, err?.message || err);
-            }
+            console.error(`[ERR] ❌ Error in weekly forecast cron for ${u.telegramId}:`, err);
           }
         }
 
@@ -1854,22 +1839,19 @@ cron.schedule(
 
           if (desc) {
             try {
-              await bot.telegram.sendMessage(
+              await safeSendMessage(
                 u.telegramId,
                 `${desc.phase || getMoonPhase(lunarDay)}\n` +
                   `Сегодня ${lunarDay}-й лунный день — ${desc.name}\n\n` +
                   `Описание: ${desc.description}\n\n` +
-                  `Совет: ${desc.advice}`
+                  `Совет: ${desc.advice}`,
+                bot
               );
               updateUser(u.telegramId, { lastLunarDay: lunarDay });
             } catch (err: any) {
-              if (err?.response?.error_code === 403) {
-                console.warn(`⚠️ User ${u.telegramId} blocked the bot (lunar day)`);
-                // Обновляем lastLunarDay, чтобы не повторять попытку
-                updateUser(u.telegramId, { lastLunarDay: lunarDay });
-              } else {
-                console.error(`❌ Error sending lunar day to ${u.telegramId}:`, err?.message || err);
-              }
+              console.error(`[ERR] ❌ Error in lunar day cron for ${u.telegramId}:`, err);
+              // Обновляем lastLunarDay, чтобы не повторять попытку
+              updateUser(u.telegramId, { lastLunarDay: lunarDay });
             }
           } else {
             // Если описания нет, всё равно обновляем день
@@ -1953,14 +1935,12 @@ bot.start(async (ctx) => {
 
     // Если пользователь уже завершил onboarding и имеет знак — показываем главное меню
     if (user.onboardingCompleted && user.sign) {
-      try {
-        await ctx.replyWithHTML(
+      await safeSend(ctx, () =>
+        ctx.replyWithHTML(
           "✨ <b>Добро пожаловать обратно!</b>\n\nВыбери раздел:",
           mainMenu
-        );
-      } catch (e: any) {
-        console.error('❌ Error sending welcome back message:', e);
-      }
+        )
+      );
       return;
     }
 
@@ -1970,63 +1950,53 @@ bot.start(async (ctx) => {
       if (user.sign) {
         // У старых пользователей есть знак, но нет флага onboarding — помечаем как завершённый
         updateUser(telegramId, { onboardingCompleted: true });
-        try {
-          await ctx.replyWithHTML(
+        await safeSend(ctx, () =>
+          ctx.replyWithHTML(
             "✨ <b>Добро пожаловать обратно!</b>\n\nВыбери раздел:",
             mainMenu
-          );
-        } catch (e: any) {
-          console.error('❌ Error sending welcome back message:', e);
-        }
+          )
+        );
         return;
       }
       // Если знака нет — показываем приветствие
-      try {
-    await ctx.reply(
-      welcomeText,
-      Markup.inlineKeyboard([
-        [Markup.button.callback("✅ Принять и продолжить", "accept_terms")],
-      ])
-    );
-      } catch (e: any) {
-        console.error('❌ Error sending welcome text:', e);
-      }
+      await safeSend(ctx, () =>
+        ctx.reply(
+          welcomeText,
+          Markup.inlineKeyboard([
+            [Markup.button.callback("✅ Принять и продолжить", "accept_terms")],
+          ])
+        )
+      );
     return;
   }
 
     // Если onboarding завершён, но знака нет (не должно быть, но на всякий случай)
     if (user.onboardingCompleted && !user.sign) {
-      try {
-        await ctx.reply("✨ Выбери свой знак Зодиака:", {
+      await safeSend(ctx, () =>
+        ctx.reply("✨ Выбери свой знак Зодиака:", {
           parse_mode: "HTML",
           ...Markup.inlineKeyboard(
             zodiacList.map((z) => [
               Markup.button.callback(`${z.emoji} ${z.name}`, `zodiac_${z.name.replace(/\s+/g, "_")}`)
             ])
           ),
-        });
-      } catch (e: any) {
-        console.error('❌ Error sending zodiac selection:', e);
-      }
+        })
+      );
       return;
     }
 
     // Новый пользователь без onboarding — показываем приветствие
-    try {
-      await ctx.reply(
+    await safeSend(ctx, () =>
+      ctx.reply(
         welcomeText,
         Markup.inlineKeyboard([
           [Markup.button.callback("✅ Принять и продолжить", "accept_terms")],
         ])
-      );
-    } catch (e: any) {
-      console.error('❌ Error sending welcome text:', e);
-    }
+      )
+    );
   } catch (err: any) {
-    console.error('❌ Error in /start command:', err);
-    try {
-      await ctx.reply("Произошла ошибка, попробуй ещё раз");
-    } catch (e) {}
+    console.error('[ERR] ❌ Error in /start command:', err);
+    await safeSend(ctx, () => ctx.reply("Произошла ошибка, попробуй ещё раз"));
   }
 });
 
@@ -2035,7 +2005,7 @@ bot.start(async (ctx) => {
  * ВАЖНО: Сохраняем в БД, не используем session
  */
 bot.action("accept_terms", async (ctx) => {
-  await ctx.answerCbQuery("⏳").catch(() => {});
+  await safeAnswerCallback(ctx, "⏳");
   setImmediate(async () => {
     try {
       const telegramId = ctx.from!.id;
@@ -2061,14 +2031,10 @@ bot.action("accept_terms", async (ctx) => {
       }
 
       // Показываем выбор знака через inline keyboard (не reply keyboard)
-      try {
-        sendZodiacSelection(ctx);
-      } catch (e: any) {
-        console.error('[ERR] ❌ Error showing zodiac selection:', e);
-      }
+      sendZodiacSelection(ctx);
     } catch (err: any) {
       console.error('[ERR] ❌ Error in accept_terms:', err);
-      try { await ctx.reply("Произошла ошибка, попробуй ещё раз"); } catch (e) {}
+      await safeSend(ctx, () => ctx.reply("Произошла ошибка, попробуй ещё раз"));
     }
   });
 });

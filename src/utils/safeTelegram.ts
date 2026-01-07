@@ -171,3 +171,52 @@ export async function safeRemoveKeyboard(ctx: Context): Promise<void> {
   }
 }
 
+/**
+ * Безопасная отправка сообщения через bot.telegram.sendMessage (для cron и других случаев без ctx).
+ * Используется для рассылок и уведомлений.
+ * 
+ * @param telegramId - ID пользователя Telegram
+ * @param text - Текст сообщения
+ * @param bot - Экземпляр Telegraf бота
+ * @returns Promise, который всегда резолвится
+ */
+export async function safeSendMessage(
+  telegramId: number,
+  text: string,
+  bot: any
+): Promise<void> {
+  try {
+    await bot.telegram.sendMessage(telegramId, text);
+  } catch (e: any) {
+    const errorMessage = e?.message || String(e);
+    const errorCode = e?.response?.error_code;
+
+    // Игнорируем ошибки блокировки бота пользователем
+    if (errorCode === 403 || errorMessage.includes("bot was blocked")) {
+      console.warn(`[ERR] ⚠️ Bot blocked by user ${telegramId}`);
+      return;
+    }
+
+    // Игнорируем ошибки удалённых чатов
+    if (errorCode === 400 && errorMessage.includes("chat not found")) {
+      console.warn(`[ERR] ⚠️ Chat not found for user ${telegramId}`);
+      return;
+    }
+
+    // Игнорируем ошибки сетевых таймаутов
+    if (errorMessage.includes("timeout") ||
+        errorMessage.includes("ECONNRESET") ||
+        errorMessage.includes("ETIMEDOUT")) {
+      console.warn(`[ERR] ⚠️ Network timeout sending to ${telegramId}`);
+      return;
+    }
+
+    // Логируем остальные ошибки
+    console.error(`[ERR] ❌ Telegram sendMessage failed:`, {
+      error: errorMessage,
+      code: errorCode,
+      userId: telegramId
+    });
+  }
+}
+
