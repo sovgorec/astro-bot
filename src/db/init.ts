@@ -1,7 +1,7 @@
 import Database from "better-sqlite3";
 import path from "path";
 
-const dbPath = path.join(process.cwd(), "db.sqlite");
+const dbPath = path.join(__dirname, "../../db.sqlite");
 const db = new Database(dbPath);
 
 // Включаем foreign keys
