@@ -171,15 +171,50 @@ export function createPayment(telegramId: number): PaymentResult | null {
   return { invoiceId, paymentUrl };
 }
 
+/**
+ * Проверяет подпись RoboKassa для Result URL (webhook)
+ * 
+ * Официальная формула: md5(OutSum:InvId:Password2)
+ * 
+ * ВАЖНО:
+ * - OutSum должен быть строкой с 2 знаками после запятой (например, "149.00")
+ * - InvId - число (invoiceId)
+ * - Password2 - второй пароль из настроек RoboKassa
+ * - Сравнение подписи case-insensitive (приводим к UPPERCASE)
+ * 
+ * @param amount - Сумма платежа (будет преобразована в OutSum с 2 знаками после запятой)
+ * @param invoiceId - ID инвойса (InvId)
+ * @param signature - Подпись от RoboKassa (SignatureValue)
+ * @returns true если подпись валидна, false иначе
+ */
 export function verifySignature(
   amount: number,
   invoiceId: number,
   signature: string
 ): boolean {
-  const signatureString = `${amount}:${invoiceId}:${PASSWORD_2}`;
-  const calculatedSignature = crypto.createHash("md5").update(signatureString).digest("hex").toUpperCase();
+  // ВАЖНО: OutSum должен быть строкой с 2 знаками после запятой
+  // Это соответствует формату, который RoboKassa отправляет в webhook
+  const outSum = Number(amount).toFixed(2);
   
-  return calculatedSignature === signature.toUpperCase();
+  // Формула: md5(OutSum:InvId:Password2)
+  const signatureString = `${outSum}:${invoiceId}:${PASSWORD_2}`;
+  const expectedSignature = crypto.createHash("md5").update(signatureString).digest("hex").toUpperCase();
+  const receivedSignature = signature.toUpperCase();
+  
+  const isValid = expectedSignature === receivedSignature;
+  
+  if (isValid) {
+    console.log("✅ Signature valid");
+    console.log(`   OutSum: ${outSum}, InvId: ${invoiceId}`);
+  } else {
+    console.error("❌ Invalid signature");
+    console.error(`   Expected: ${expectedSignature}`);
+    console.error(`   Received: ${receivedSignature}`);
+    console.error(`   OutSum: ${outSum}, InvId: ${invoiceId}`);
+    console.error(`   Signature string: ${signatureString}`);
+  }
+  
+  return isValid;
 }
 
 export function findPaymentById(id: number): { telegram_id: string; status: string } | null {
