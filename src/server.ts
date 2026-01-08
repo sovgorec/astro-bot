@@ -73,19 +73,15 @@ app.post("/webhook/robokassa", async (req: Request, res: Response) => {
     // Находим платеж по ID
     const payment = findPaymentById(invoiceId);
     if (!payment) {
-      console.error("❌ Payment not found:", invoiceId);
+      console.error("[WEBHOOK] ❌ Payment not found:", invoiceId);
       return res.status(404).send("Payment not found");
     }
 
-    console.log("✅ Payment found:", {
-      invoiceId,
-      telegramId: payment.telegram_id,
-      status: payment.status
-    });
+    console.log(`[WEBHOOK] payment found | InvoiceId: ${invoiceId}, TelegramId: ${payment.telegram_id}, Status: ${payment.status}`);
 
-    // Проверяем, не оплачен ли уже
+    // ШАГ 3: Проверяем, не оплачен ли уже (идемпотентность)
     if (payment.status === "paid") {
-      console.log("ℹ️ Payment already processed:", invoiceId);
+      console.log(`[WEBHOOK] payment already paid → skip | InvoiceId: ${invoiceId}`);
       return res.send(`OK${invoiceId}`);
     }
 
@@ -107,10 +103,12 @@ app.post("/webhook/robokassa", async (req: Request, res: Response) => {
 
     // Обновляем статус платежа
     updatePaymentStatus(invoiceId, "paid");
-    console.log(`[PAY] ✅ Payment status updated to 'paid' | InvoiceId: ${invoiceId}`);
+    console.log(`[WEBHOOK] ✅ payment status updated to 'paid' | InvoiceId: ${invoiceId}`);
 
-    // Активируем подписку для этого telegram_id через webhook
+    // ШАГ 3: Активируем подписку для этого telegram_id через webhook
+    // Это работает для ЛЮБОГО pending invoice, не только последнего
     activateSubscription(telegramId, SUBSCRIPTION_DAYS, 'webhook');
+    console.log(`[SUB] subscription activated | User: ${telegramId}, InvoiceId: ${invoiceId}`);
 
     // Отправляем уведомление пользователю
     await safeSendMessage(

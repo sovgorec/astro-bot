@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import db from "../db/init";
 import { getUserByTelegramId, createUserIfNotExists } from "../db/userRepository";
+import { hasActiveSubscription } from "../db/subscriptionRepository";
 
 /**
  * RoboKassa Merchant API интеграция
@@ -49,6 +50,43 @@ const BASE_URL = IS_TEST
  * @returns PaymentResult с invoiceId и paymentUrl, или null при ошибке
  */
 export function createPayment(telegramId: number): PaymentResult | null {
+  // ШАГ 4: Проверяем активную подписку
+  if (hasActiveSubscription(telegramId)) {
+    console.log(`[PAY] subscription already active → payment blocked | User: ${telegramId}`);
+    return null;
+  }
+  
+  // ШАГ 2: Проверяем наличие pending платежа
+  const pendingPayment = findPendingPaymentByTelegramId(telegramId);
+  if (pendingPayment) {
+    console.log(`[PAY] pending payment found → reuse invoiceId=${pendingPayment.id} | User: ${telegramId}`);
+    
+    // Пересоздаём paymentUrl для существующего invoiceId
+    const outSum = Number(AMOUNT).toFixed(2);
+    const merchantLogin = MERCHANT_LOGIN!;
+    const signatureString = `${merchantLogin}:${outSum}:${pendingPayment.id}:${PASSWORD_1}`;
+    const signature = crypto.createHash("md5").update(signatureString).digest("hex").toLowerCase();
+    
+    const description = `Подписка на ${SUBSCRIPTION_DAYS} дней`;
+    const params = new URLSearchParams({
+      MerchantLogin: merchantLogin,
+      OutSum: outSum,
+      InvId: pendingPayment.id.toString(),
+      Description: description,
+      SignatureValue: signature,
+      Culture: "ru",
+      Email: "user@telegram.local"
+    });
+    
+    if (IS_TEST) {
+      params.append("IsTest", "1");
+    }
+    
+    const paymentUrl = `${BASE_URL}?${params.toString()}`;
+    
+    return { invoiceId: pendingPayment.id, paymentUrl };
+  }
+  
   // ВАЖНО: Убеждаемся, что пользователь существует в БД перед созданием платежа
   let user = getUserByTelegramId(telegramId);
   if (!user) {
@@ -75,6 +113,8 @@ export function createPayment(telegramId: number): PaymentResult | null {
     console.error("❌ ROBOKASSA_PASSWORD_1 is not set");
     return null;
   }
+  
+  console.log(`[PAY] creating new payment → invoiceId will be generated | User: ${telegramId}`);
   
   // Генерируем уникальный InvId используя Date.now()
   const invoiceId = Date.now();
@@ -138,7 +178,7 @@ export function createPayment(telegramId: number): PaymentResult | null {
   try {
     const telegramIdStr = String(telegramId);
     stmt.run(invoiceId, telegramIdStr, AMOUNT, new Date().toISOString());
-    console.log(`💳 Платёж создан: invoiceId=${invoiceId}, telegramId=${telegramIdStr}, amount=${AMOUNT}`);
+    console.log(`[PAY] ✅ new payment created → invoiceId=${invoiceId}, telegramId=${telegramIdStr}, amount=${AMOUNT}`);
   } catch (err: any) {
     // Если id уже существует (крайне маловероятно для Date.now()), генерируем новый с добавлением миллисекунд
     if (err.code === 'SQLITE_CONSTRAINT_PRIMARYKEY') {
@@ -152,7 +192,7 @@ export function createPayment(telegramId: number): PaymentResult | null {
       
       const telegramIdStr = String(telegramId);
       stmt.run(invoiceIdWithRandom, telegramIdStr, AMOUNT, new Date().toISOString());
-      console.log(`💳 Платёж создан (retry): invoiceId=${invoiceIdWithRandom}, telegramId=${telegramIdStr}, amount=${AMOUNT}`);
+      console.log(`[PAY] ✅ new payment created (retry after collision) → invoiceId=${invoiceIdWithRandom}, telegramId=${telegramIdStr}, amount=${AMOUNT}`);
       
       const paymentUrl2 = `${BASE_URL}?${params.toString()}`;
       
@@ -218,6 +258,25 @@ export function verifySignature(
 export function findPaymentById(id: number): { telegram_id: string; status: string } | null {
   const stmt = db.prepare("SELECT telegram_id, status FROM payments WHERE id = ?");
   const row = stmt.get(id) as { telegram_id: string; status: string } | undefined;
+  
+  return row || null;
+}
+
+/**
+ * Находит последний pending-платёж для пользователя
+ * @param telegramId - ID пользователя Telegram
+ * @returns Информация о последнем pending платеже (id, amount) или null
+ */
+export function findPendingPaymentByTelegramId(telegramId: number): { id: number; amount: number } | null {
+  const telegramIdStr = String(telegramId);
+  const stmt = db.prepare(`
+    SELECT id, amount 
+    FROM payments 
+    WHERE telegram_id = ? AND status = 'pending' 
+    ORDER BY id DESC 
+    LIMIT 1
+  `);
+  const row = stmt.get(telegramIdStr) as { id: number; amount: number } | undefined;
   
   return row || null;
 }
