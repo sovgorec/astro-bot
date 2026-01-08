@@ -49,7 +49,9 @@ app.post("/webhook/robokassa", async (req: Request, res: Response) => {
       return res.status(400).send("Missing required parameters");
     }
 
-    const amount = parseFloat(String(OutSum));
+    // ВАЖНО: OutSum используем как строку БЕЗ преобразований
+    // RoboKassa подписывает именно ту строку, которую отправляет (например "149.000000")
+    const outSumRaw = String(OutSum);
     const invoiceId = Number(InvId);
     const signature = String(SignatureValue);
 
@@ -59,10 +61,10 @@ app.post("/webhook/robokassa", async (req: Request, res: Response) => {
       return res.status(400).send("Invalid InvId");
     }
 
-    // Проверяем подпись
-    if (!verifySignature(amount, invoiceId, signature)) {
+    // Проверяем подпись (передаём OutSum как строку)
+    if (!verifySignature(outSumRaw, invoiceId, signature)) {
       console.error("❌ Invalid signature");
-      console.error("   amount:", amount);
+      console.error("   OutSum:", outSumRaw);
       console.error("   invoiceId:", invoiceId);
       console.error("   signature:", signature);
       return res.status(400).send("Invalid signature");
